@@ -1,3 +1,5 @@
+import { APP_TZ } from './date'
+
 /** Cifras con punto de millar SIEMPRE.
  *
  * `toLocaleString('es-ES')` a secas no agrupa los números de cuatro dígitos
@@ -18,9 +20,10 @@ export function formatRelative(tsSeconds: number): string {
   return `hace ${days} día${days === 1 ? '' : 's'}`
 }
 
-/** Hora local "22:31" de un instante unix. */
+/** Hora "22:31" de un instante unix en la zona de la app (APP_TZ), no en la
+ * del navegador: es la que usan los días del backend y de lib/date. */
 export function formatClock(tsSeconds: number): string {
-  return new Date(tsSeconds * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+  return new Date(tsSeconds * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: APP_TZ })
 }
 
 export function formatDuration(minutes: number): string {

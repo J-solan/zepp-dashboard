@@ -2,7 +2,7 @@
 // DEFAULT_TZ): "hoy" debe calcularse en esta tz local, no en UTC. Cerca de
 // medianoche (00:00-02:00 en verano) la fecha UTC todavía es la del día
 // anterior y desalinea el rango pedido al backend respecto al día local real.
-const APP_TZ = 'Europe/Madrid'
+export const APP_TZ = 'Europe/Madrid'
 
 function isoInAppTz(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', {

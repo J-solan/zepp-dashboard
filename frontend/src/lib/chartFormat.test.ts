@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { timeAxis } from './chartFormat'
+import { formatTooltipTs, timeAxis } from './chartFormat'
 import { dayBoundaryTs, dayStartTs, rangeBoundsTs } from './date'
 
 /** Medianoches locales del rango, tal como se las pasa TimeSeriesChart. */
@@ -66,7 +66,9 @@ describe('timeAxis — vistas multi-día', () => {
     // Formato día/mes, no la hora que se usa intradía. (El relleno a dos
     // dígitos depende de los datos de locale, que en Node son reducidos: se
     // comprueba la forma, no el string exacto.)
-    expect(axis.format(axis.ticks[0])).toMatch(/^\d{1,2}\/0?7$/)
+    // Y el día es el de Madrid: con la zona de la máquina en UTC, la medianoche
+    // del 18 se etiquetaba "17/7".
+    expect(axis.format(axis.ticks[0])).toMatch(/^18\/0?7$/)
   })
 
   it('en un mes submuestrea los días para no amontonar etiquetas', () => {
@@ -81,5 +83,11 @@ describe('timeAxis — vistas multi-día', () => {
     for (const tick of axis.ticks) {
       expect(new Date(tick * 1000).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid' })).toBe('0:00:00')
     }
+  })
+})
+
+describe('formatTooltipTs', () => {
+  it('pinta día y hora de Madrid, no de la zona de la máquina', () => {
+    expect(formatTooltipTs(dayStartTs('2026-07-24') + 15.5 * HOUR)).toMatch(/^24\/0?7, 15:30$/)
   })
 })

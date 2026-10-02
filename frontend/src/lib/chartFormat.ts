@@ -1,3 +1,5 @@
+import { APP_TZ } from './date'
+
 const DAY_S = 86400
 
 // Pasos intradía para los ticks del eje X. Se elige el más fino que no pase de
@@ -12,11 +14,11 @@ export interface TimeAxis {
 }
 
 function formatTime(ts: number): string {
-  return new Date(ts * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+  return new Date(ts * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: APP_TZ })
 }
 
 function formatDay(ts: number): string {
-  return new Date(ts * 1000).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })
+  return new Date(ts * 1000).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', timeZone: APP_TZ })
 }
 
 /** Ticks del eje X para el tramo visible `[start, end]` (unix s).
@@ -45,6 +47,7 @@ export function formatTooltipTs(ts: number): string {
     month: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: APP_TZ,
   })
 }
 

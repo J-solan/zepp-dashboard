@@ -2,15 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from './Button'
 import { CloseIcon, NoteIcon, TrashIcon } from './icons'
 import { formatTooltipTs } from '../lib/chartFormat'
+import { dayOfTs } from '../lib/date'
+import { formatClock } from '../lib/format'
 import type { AnnotationEditor } from '../hooks/useAnnotationEditor'
 
 /** Rango de una nota en texto: si empieza y acaba el mismo día basta con las
  * horas ("10:30 – 12:00"); si cruza la medianoche hace falta la fecha. */
 function spanLabel(from: number, to: number): string {
-  const sameDay = new Date(from * 1000).toDateString() === new Date(to * 1000).toDateString()
-  const end = new Date(to * 1000)
-  return sameDay
-    ? `${formatTooltipTs(from)} – ${end.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
+  return dayOfTs(from) === dayOfTs(to)
+    ? `${formatTooltipTs(from)} – ${formatClock(to)}`
     : `${formatTooltipTs(from)} – ${formatTooltipTs(to)}`
 }
 

@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { areaPath, barsPath, gapPath, linePath } from '../lib/series'
 import { daySeries } from '../lib/days'
-import { daySpan } from '../lib/date'
+import { dayOfTs, daySpan } from '../lib/date'
 import { formatAxisDay } from '../lib/chartFormat'
 import { formatNumber } from '../lib/format'
 import { METRIC } from '../lib/palette'
@@ -91,7 +91,7 @@ export function SeriesBoard({ range, daily, sessions, workouts, styles }: Series
   const marks = useMemo(() => {
     const byDay = new Map<string, Set<string | null>>()
     for (const w of workouts) {
-      const day = new Date(w.start_ts * 1000).toLocaleDateString('sv-SE')
+      const day = dayOfTs(w.start_ts)
       if (!byDay.has(day)) byDay.set(day, new Set())
       byDay.get(day)!.add(w.effective_sport)
     }
