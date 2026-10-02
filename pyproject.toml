@@ -1,0 +1,20 @@
+[project]
+name = "zepp-dashboard"
+version = "0.1.0"
+description = "Dashboard personal de salud Zepp/Amazfit + Hevy (ingesta, backend y web propios)."
+requires-python = ">=3.11"
+dependencies = [
+    "cryptography>=49.0.0",
+    "fastapi>=0.139.2",
+    "httpx",
+    "uvicorn>=0.51.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["ingest/tests", "backend/tests", "demo/tests"]

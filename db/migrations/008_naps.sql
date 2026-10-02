@@ -1,0 +1,14 @@
+-- Siestas: el bloque ``odd_stage`` del resumen de sueño, que hasta ahora se
+-- descartaba entero. En la cuenta de referencia aparece en 22 de 39 días, así
+-- que no es un caso raro.
+--
+-- El esquema ya admitía varias sesiones por día (``UNIQUE(day, start_ts)`` se
+-- puso para esto), así que una siesta es una fila más de ``sleep_session``.
+-- Solo hace falta poder distinguirla, y por dos motivos:
+--
+-- 1. Una siesta NO tiene score, ni FC en reposo, ni recuento de despertares:
+--    esos campos son del sueño nocturno y se quedan NULL.
+-- 2. ``/api/overview`` coge la última sesión del día. Sin esta bandera, una
+--    siesta de las 22:30 le ganaría a la noche y la tarjeta de sueño mostraría
+--    40 minutos en vez de 8 horas.
+ALTER TABLE sleep_session ADD COLUMN is_nap INTEGER NOT NULL DEFAULT 0;

@@ -1,0 +1,126 @@
+# Mapa ejercicio -> músculos con intensidad, semilla de la tabla
+# ``exercise_muscle`` (se re-carga con UPSERT en cada ``hevy import``).
+#
+# La clave de cada tabla es el ``exercise_title`` EXACTO del export de Hevy
+# (acentos y paréntesis incluidos): el match es por string literal, así que
+# renombrar un ejercicio en Hevy obliga a añadir la nueva clave aquí.
+#
+# intensity: 0-1. 1.0 = músculo principal (el que va a
+# ``workout_set.muscle_group``); los demás ponderan su contribución al volumen
+# semanal por músculo. Cada ejercicio necesita EXACTAMENTE un músculo a 1.0.
+#
+# Nombres de músculo en español y en minúscula, sin acentos, consistentes entre
+# ejercicios: pecho, dorsal, trapecio, lumbar, hombro, biceps, triceps,
+# antebrazo, core, cuadriceps, femoral, gluteo, aductor, abductor, gemelo.
+#
+# Semilla anatómicamente razonable de los 12 ejercicios del export real; el
+# usuario la ajusta a su criterio sin tocar código.
+
+["Press de Banca Inclinado (Mancuerna)"]
+pecho = 1.0
+hombro = 0.6
+triceps = 0.5
+
+["Jalón al Pecho (Cable)"]
+dorsal = 1.0
+biceps = 0.5
+trapecio = 0.3
+
+["Máquina para Fondos Sentado"]
+triceps = 1.0
+pecho = 0.5
+hombro = 0.4
+
+["Curl de Bíceps Inclinado (Mancuerna)"]
+biceps = 1.0
+antebrazo = 0.3
+
+["Press de Piernas"]
+cuadriceps = 1.0
+gluteo = 0.7
+femoral = 0.3
+
+["Peso Muerto Rumano (Barra)"]
+femoral = 1.0
+gluteo = 0.8
+lumbar = 0.5
+dorsal = 0.3
+
+["Aducción de Caderas"]
+aductor = 1.0
+
+["Abducción de Caderas"]
+abductor = 1.0
+gluteo = 0.5
+
+["Sentadilla Hack (Máquina)"]
+cuadriceps = 1.0
+gluteo = 0.6
+femoral = 0.4
+
+["Impulso de Cadera (Máquina)"]
+gluteo = 1.0
+femoral = 0.5
+cuadriceps = 0.2
+
+["Curl de Piernas Acostado (Máquina)"]
+femoral = 1.0
+gemelo = 0.3
+
+["Extensión de Pierna"]
+cuadriceps = 1.0
+
+["Sentadilla (Barra)"]
+cuadriceps = 1.0
+gluteo = 0.7
+femoral = 0.4
+lumbar = 0.3
+core = 0.3
+
+["Peso Muerto (Barra Trap)"]
+cuadriceps = 1.0
+gluteo = 0.8
+femoral = 0.6
+lumbar = 0.6
+trapecio = 0.4
+antebrazo = 0.3
+
+["Remo Sentado con Cable"]
+dorsal = 1.0
+trapecio = 0.6
+biceps = 0.5
+
+["Remo Sentado con Cable - Agarre Recto"]
+dorsal = 1.0
+trapecio = 0.6
+biceps = 0.4
+
+["Remo en Punta"]
+dorsal = 1.0
+trapecio = 0.5
+biceps = 0.4
+lumbar = 0.3
+
+["Dominada (Asistida)"]
+dorsal = 1.0
+biceps = 0.6
+trapecio = 0.3
+antebrazo = 0.3
+
+["Aperturas (Máquina)"]
+pecho = 1.0
+hombro = 0.3
+
+["Aperturas (Banda)"]
+pecho = 1.0
+hombro = 0.3
+
+["Elevacion Laterales (Mancuerna)"]
+hombro = 1.0
+trapecio = 0.3
+
+["Tríceps con Polea"]
+triceps = 1.0
+
+["Jalón de tríceps con cuerda"]
+triceps = 1.0

@@ -1,0 +1,22 @@
+# Datos locales y base de datos SQLite (incl. WAL/SHM)
+data/
+*.db*
+
+# Secretos y config con credenciales
+.env
+ingest/config.toml
+*token*
+
+# Payloads reales de salud (no se commitean nunca)
+ingest/tests/fixtures_local/
+
+# Artefactos de Python / entornos / caches
+__pycache__/
+.venv/
+node_modules/
+.pytest_cache/
+.ruff_cache/
+
+# Configuración local de herramientas de desarrollo
+.claude/
+CLAUDE.md

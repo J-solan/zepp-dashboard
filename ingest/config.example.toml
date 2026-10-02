@@ -1,0 +1,71 @@
+# Config de EJEMPLO. Copia este fichero a ingest/config.toml y rellénalo.
+# NUNCA commitees ingest/config.toml: contiene credenciales y está en .gitignore.
+
+# ---------------------------------------------------------------------------
+# Cuenta Zepp (lo mínimo para obtener el token)
+# ---------------------------------------------------------------------------
+
+# Credenciales de la cuenta Zepp. Solo email + password: las cuentas con SSO
+# (Xiaomi, Google, Apple) o con 2FA NO funcionan con este flujo de login.
+email = ""
+password = ""
+
+# Host API regional, usado por los GET de datos. Default = UE (eu-central-1).
+# El host equivocado devuelve 403 o respuestas vacías. Ver docs/01-login.md.
+region_host = "api-mifit-de2.zepp.com"
+
+# Opcional. Host de la FASE 1 del login (credenciales -> access/refresh token).
+# NO afecta a region_host. Si se omite, usa el default validado en vivo
+# (api-user-us2.zepp.com), que funciona para cualquier región de datos: ni
+# huami-token ni zepp-health-cli implementan autodetección real de host de
+# login por país. Descomenta solo si el default deja de funcionar.
+# login_host = "api-user-us2.zepp.com"
+
+# El user_id NO se configura: sale de la respuesta del login y se cachea junto
+# al app_token en data/app_token.json.
+
+# ---------------------------------------------------------------------------
+# Ingesta
+# ---------------------------------------------------------------------------
+
+# Zona horaria local, usada para anclar los días de las series.
+tz = "Europe/Madrid"
+
+# Nº de días hacia atrás a sincronizar en cada pull.
+ventana_dias = 30
+
+# Días desde "hoy" que SIEMPRE se re-sincronizan aunque sync_state ya diga
+# 'ok' (datos del día en curso o recién cerrado son parciales o llegan con
+# retraso del servidor). El resto de la ventana se salta si ya está 'ok'.
+safety_days = 1
+
+[sport_types]
+# Mapa sport_type (code numérico) -> nombre legible. Un code que NO aparezca
+# aquí entra en la cola de revisión (review_status='pending'), igual que el 223.
+# Estos tres codes están validados con un Amazfit Helio Strap; otro dispositivo
+# puede usar otros. Los que descubras van aquí.
+52 = "fuerza"
+122 = "voley_playa"
+223 = "auto_ia"
+
+# ---------------------------------------------------------------------------
+# Backend (todo opcional: sin nada de esto la API funciona igual)
+# ---------------------------------------------------------------------------
+
+# Nombre del deporte que se cruza con los entrenos de Hevy. Debe coincidir con
+# uno de los valores de [sport_types] de arriba: es el nombre, y no el code,
+# lo que dispara el vínculo, para que valga con cualquier dispositivo.
+# strength_sport = "fuerza"
+
+# Ruta de la base SQLite. Por defecto data/zepp.db dentro del repo.
+# db_path = "data/zepp.db"
+
+# Bearer token para proteger /api/*. Sin él la API queda ABIERTA a quien
+# alcance el puerto (previsto para uso propio detrás de Tailscale o localhost).
+# Con él, las peticiones necesitan 'Authorization: Bearer <token>'.
+# api_token = "pon-aqui-una-cadena-larga-y-aleatoria"
+
+# Orígenes permitidos por CORS. Solo hace falta si sirves la web desde otro
+# origen distinto al backend; con `npm run build` uvicorn sirve la web él mismo
+# y CORS deja de intervenir. El default cubre el `npm run dev` de Vite.
+# cors_origins = ["http://localhost:5173"]
