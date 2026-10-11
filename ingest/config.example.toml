@@ -36,12 +36,15 @@ ventana_dias = 30
 
 # Días desde "hoy" que SIEMPRE se re-sincronizan aunque sync_state ya diga
 # 'ok' (datos del día en curso o recién cerrado son parciales o llegan con
-# retraso del servidor). El resto de la ventana se salta si ya está 'ok'.
+# retraso del servidor). El resto de la ventana se salta si ya quedó 'ok'
+# pasado ese margen; un día pedido mientras estaba en curso se vuelve a pedir.
 safety_days = 1
 
 [sport_types]
 # Mapa sport_type (code numérico) -> nombre legible. Un code que NO aparezca
-# aquí entra en la cola de revisión (review_status='pending'), igual que el 223.
+# aquí entra en la cola de revisión (review_status='pending'), igual que toda
+# sesión que la pulsera auto-detectó (auto_recognition). Si lo mapeas después,
+# el siguiente sync saca de la cola lo que solo estaba ahí por ese code.
 # Estos tres codes están validados con un Amazfit Helio Strap; otro dispositivo
 # puede usar otros. Los que descubras van aquí.
 52 = "fuerza"

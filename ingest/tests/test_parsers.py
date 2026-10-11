@@ -380,9 +380,22 @@ def test_parse_sport_history_empty_title_is_none_not_empty_string():
     assert parsers.parse_sport_history(_payload(w), SPORT_TYPES)[0]["sport_title"] is None
 
 
-def test_parse_sport_history_type_223_is_always_pending():
-    workouts = parsers.parse_sport_history(_payload(_workout(type=223)), SPORT_TYPES)
+def test_parse_sport_history_auto_recognized_is_pending_even_with_mapped_code():
+    """Lo que la pulsera adivinó va a la cola aunque su code esté mapeado."""
+    workouts = parsers.parse_sport_history(
+        _payload(_workout(type=52, auto_recognition=True)), SPORT_TYPES
+    )
     assert workouts[0]["review_status"] == "pending"
+
+
+def test_parse_sport_history_no_code_is_special_only_the_flag_counts():
+    """La regla no depende de ningún code concreto: una sesión manual con un
+    code mapeado es 'auto', sea el que sea."""
+    for code in (52, 223):
+        workouts = parsers.parse_sport_history(
+            _payload(_workout(type=code, auto_recognition=False)), SPORT_TYPES
+        )
+        assert workouts[0]["review_status"] == "auto", code
 
 
 def test_parse_sport_history_unknown_code_is_pending():

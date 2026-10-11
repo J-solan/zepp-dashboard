@@ -102,20 +102,18 @@ def test_biocharge_cadence_and_range(dir_name):
 
 
 @pytest.mark.parametrize("dir_name", DIRS)
-def test_sport_history_223_pending_and_known_codes_auto(dir_name):
-    """Invariante universal: 223 siempre 'pending'; code conocido != 223 -> 'auto'."""
+def test_sport_history_auto_detected_pending_and_known_manual_auto(dir_name):
+    """Invariante universal: lo auto-detectado siempre 'pending'; una sesión
+    manual con code conocido -> 'auto'."""
     payload = _load(dir_name, "sport_history.json")
     workouts = parsers.parse_sport_history(payload, SPORT_TYPES)
     assert workouts
 
-    by_type: dict[int, list[dict]] = {}
     for w in workouts:
-        by_type.setdefault(w["type"], []).append(w)
-
-    assert all(w["review_status"] == "pending" for w in by_type.get(223, []))
-    for sport_type, group in by_type.items():
-        if sport_type != 223 and str(sport_type) in SPORT_TYPES:
-            assert all(w["review_status"] == "auto" for w in group)
+        if w["auto_recognition"]:
+            assert w["review_status"] == "pending"
+        elif str(w["type"]) in SPORT_TYPES:
+            assert w["review_status"] == "auto"
 
 
 def test_sanitized_sport_history_has_unknown_code_and_sentinels():

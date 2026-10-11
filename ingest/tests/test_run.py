@@ -13,6 +13,7 @@ import json
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -304,6 +305,30 @@ def test_incremental_retries_previously_errored_source_day(conn):
     )
 
 
+@pytest.mark.parametrize(
+    "last_ok_offset_s, refetched",
+    [
+        (-(4 * 3600 + 58 * 60), True),  # pedido a las 19:02 del MISMO día (en curso)
+        (-1, True),  # un segundo antes de que cierre day + safety_days
+        (0, False),  # a medianoche local de day + safety_days: ya es definitivo
+    ],
+)
+def test_ok_is_only_definitive_if_fetched_after_day_plus_safety_days(conn, last_ok_offset_s, refetched):
+    """Un día pedido mientras aún estaba en curso quedó 'ok' con datos
+    parciales: al salir de safety_days no debe darse por cerrado para siempre."""
+    old_day = FIXTURE_DAY - timedelta(days=3)
+    run.run_ingest(conn, FakeClient(), [old_day], CONFIG, today=old_day)
+    # safety_days=1 (default): definitivo desde la medianoche local de old_day+1.
+    closes_at = run._day_bounds_ms(old_day + timedelta(days=1), TZ)[0] // 1000
+    conn.execute("UPDATE sync_state SET last_ok_at = ?", (closes_at + last_ok_offset_s,))
+    conn.commit()
+
+    client = FakeClient()
+    run.run_ingest(conn, client, [old_day], CONFIG, today=FIXTURE_DAY)
+
+    assert client.calls.count("band_data") == (1 if refetched else 0)
+
+
 def test_incremental_false_refetches_everything(conn):
     days = [FIXTURE_DAY - timedelta(days=i) for i in range(4, -1, -1)]
     run.run_ingest(conn, FakeClient(), days, CONFIG, today=FIXTURE_DAY)
@@ -313,6 +338,92 @@ def test_incremental_false_refetches_everything(conn):
 
     assert client.calls.count("band_data") == len(days)
     assert stats["skipped"] == 0
+
+
+# Huecos fuera de la ventana: días anteriores a WINDOW_START (ventana de 30).
+WINDOW_START = FIXTURE_DAY - timedelta(days=29)
+
+
+def _before_window(n: int) -> date:
+    return WINDOW_START - timedelta(days=n)
+
+
+def _ingest_ok(conn, days: list[date]) -> None:
+    run.run_ingest(conn, FakeClient(), days, CONFIG, today=FIXTURE_DAY, incremental=False)
+
+
+def test_gap_start_finds_days_that_were_never_requested(conn):
+    """Más de ventana_dias entre dos syncs: los días intermedios salieron de
+    la ventana sin pedirse nunca."""
+    _ingest_ok(conn, [_before_window(6), _before_window(5)])
+    _ingest_ok(conn, [_before_window(2), _before_window(1)])
+
+    assert run._first_gap_day(conn, WINDOW_START, TZ, 1) == _before_window(4)
+
+
+def test_gap_start_counts_errors_and_non_definitive_ok_as_gaps(conn):
+    _ingest_ok(conn, [_before_window(n) for n in range(5, 0, -1)])
+    assert run._first_gap_day(conn, WINDOW_START, TZ, 1) is None
+
+    run.set_sync_state(conn, "hrv", _before_window(2).isoformat(), "error")
+    assert run._first_gap_day(conn, WINDOW_START, TZ, 1) == _before_window(2)
+
+    fetched_same_day = run._day_bounds_ms(_before_window(4), TZ)[0] // 1000 + 19 * 3600
+    conn.execute(
+        "UPDATE sync_state SET last_ok_at = ? WHERE source = 'band_data' AND day = ?",
+        (fetched_same_day, _before_window(4).isoformat()),
+    )
+    assert run._first_gap_day(conn, WINDOW_START, TZ, 1) == _before_window(4)
+
+
+def test_gap_start_ignores_window_sources_and_days_inside_the_window(conn):
+    assert run._first_gap_day(conn, WINDOW_START, TZ, 1) is None  # sin historial
+    # Las fuentes de ventana no son por día: ni abren hueco ni fijan el primer día.
+    run.set_sync_state(conn, "vo2max", _before_window(10).isoformat(), "error")
+    # Un error DENTRO de la ventana ya lo reintenta el sync normal.
+    run.set_sync_state(conn, "band_data", WINDOW_START.isoformat(), "error")
+
+    assert run._first_gap_day(conn, WINDOW_START, TZ, 1) is None
+
+
+def _patch_main(monkeypatch, tmp_path, *, errors: int = 0) -> dict:
+    """``main`` sin red ni config real; captura los días que recibe run_ingest."""
+    seen: dict = {}
+
+    def fake_run_ingest(conn, client, days, config, **kwargs):
+        seen["days"] = days
+        return {"ok": 1, "error": errors, "skipped": 0, "derived_hr": 0}
+
+    monkeypatch.setattr(run, "load_config", lambda: {**CONFIG, "ventana_dias": 30})
+    monkeypatch.setattr(run, "init_db", lambda: None)  # ya la crea el fixture conn
+    monkeypatch.setattr(run, "DEFAULT_DB_PATH", tmp_path / "zepp.db")
+    monkeypatch.setattr(run, "ZeppAuth", lambda config: None)
+    monkeypatch.setattr(run, "ZeppClient", lambda auth, config: None)
+    monkeypatch.setattr(run, "run_ingest", fake_run_ingest)
+    return seen
+
+
+def test_main_default_mode_extends_the_range_back_to_the_oldest_gap(conn, tmp_path, monkeypatch, capsys):
+    seen = _patch_main(monkeypatch, tmp_path)
+    today = datetime.now(ZoneInfo(TZ)).date()
+    gap = today - timedelta(days=40)
+    run.set_sync_state(conn, "band_data", gap.isoformat(), "error")
+
+    run.main([])
+    assert (seen["days"][0], seen["days"][-1]) == (gap, today)
+    assert f"Recuperando huecos desde {gap.isoformat()}" in capsys.readouterr().out
+
+    # Con rango explícito o --force manda lo que pidió el usuario.
+    for argv in (["--days", "3"], ["--force"], ["--from", (today - timedelta(days=3)).isoformat()]):
+        run.main(argv)
+        assert seen["days"][0] > gap, argv
+
+
+@pytest.mark.parametrize("errors, exit_code", [(0, 0), (2, 1)])
+def test_main_exit_code_signals_sync_errors(conn, tmp_path, monkeypatch, errors, exit_code):
+    """Un cron o un timer de systemd solo ve el código de salida."""
+    _patch_main(monkeypatch, tmp_path, errors=errors)
+    assert run.main([]) == exit_code
 
 
 def test_steady_state_second_sync_matches_expected_request_count(conn):
@@ -432,6 +543,40 @@ def test_reingest_still_refreshes_metric_columns(conn):
     assert conn.execute(
         "SELECT train_load FROM workout WHERE external_id = ?", (external_id,)
     ).fetchone()[0] != 999
+
+
+def test_mapping_a_code_later_moves_its_workouts_from_pending_to_auto(conn):
+    """Un usuario nuevo sincroniza ANTES de mapear sus codes: al mapear y
+    re-ingerir, lo que solo estaba en la cola por code desconocido sale de ella."""
+    sport = _fixture("sport_history.json")
+    code = 777  # sesión manual (auto_recognition=false) con code sin mapear
+    run.run_ingest(conn, FakeClient(sport=sport), [FIXTURE_DAY], CONFIG)
+    assert conn.execute(
+        "SELECT review_status FROM workout WHERE sport_type = ?", (code,)
+    ).fetchone() == ("pending",)
+
+    mapped = {**CONFIG, "sport_types": {**CONFIG["sport_types"], str(code): "padel"}}
+    run.run_ingest(conn, FakeClient(sport=sport), [FIXTURE_DAY], mapped)
+
+    assert conn.execute(
+        "SELECT review_status, sport FROM workout WHERE sport_type = ?", (code,)
+    ).fetchone() == ("auto", "padel")
+
+
+def test_reingest_never_overrides_classified_or_ignored(conn):
+    run.run_ingest(conn, FakeClient(), [FIXTURE_DAY], CONFIG)
+    # Sesiones manuales con code mapeado: la re-ingesta las propone como 'auto'.
+    ids = [r[0] for r in conn.execute("SELECT id FROM workout WHERE sport_type = 52 LIMIT 2")]
+    conn.execute("UPDATE workout SET review_status = 'classified' WHERE id = ?", (ids[0],))
+    conn.execute("UPDATE workout SET review_status = 'ignored' WHERE id = ?", (ids[1],))
+    conn.commit()
+
+    run.run_ingest(conn, FakeClient(), [FIXTURE_DAY], CONFIG)
+
+    assert [
+        conn.execute("SELECT review_status FROM workout WHERE id = ?", (i,)).fetchone()[0]
+        for i in ids
+    ] == ["classified", "ignored"]
 
 
 def test_unknown_sport_code_lands_as_pending_without_sport_name(conn):

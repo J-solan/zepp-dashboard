@@ -367,8 +367,10 @@ def parse_sport_history(payload: dict, sport_types: dict) -> list[dict]:
 
     Centinelas -1/-20000/-274/-361 -> None. ``te`` viene *10 en el payload
     real (rango observado 0-50) -> se escala a 1.0-5.0 dividiendo entre 10.
-    ``review_status``: 'pending' si type==223 o el code no está en
-    ``sport_types``; resto -> 'auto'.
+    ``review_status``: 'pending' si la sesión la auto-detectó la pulsera
+    (``auto_recognition``) o su code no está en ``sport_types``; resto ->
+    'auto'. Se usa el flag del propio payload y no un code concreto porque los
+    codes cambian entre dispositivos y el flag no (docs/zepp-api.md, "Workouts").
     """
     known_codes = {str(code) for code in sport_types}
     workouts: list[dict] = []
@@ -383,7 +385,7 @@ def parse_sport_history(payload: dict, sport_types: dict) -> list[dict]:
 
         review_status = (
             "pending"
-            if sport_type == 223 or str(sport_type) not in known_codes
+            if w.get("auto_recognition") or str(sport_type) not in known_codes
             else "auto"
         )
 

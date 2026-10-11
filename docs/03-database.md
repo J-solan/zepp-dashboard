@@ -41,8 +41,13 @@ uv run python -m ingest.run --force                # ignore sync_state, re-fetch
 
 By default it is **incremental**: a `(source, day)` already recorded `ok` in
 `sync_state` is skipped, except within `safety_days` of today (the server
-backfills recent days). An explicit `--from` always re-fetches — it is the
-"reprocess this, I mean it" flag.
+backfills recent days). An `ok` only counts once it was fetched after that
+`safety_days` margin had passed: a day synced while still in progress is fetched
+again. Without `--days`, `--from`/`--to` or `--force`, the run also reaches back
+past the window to the oldest day still missing, errored or partial (say, more
+than `ventana_dias` went by between two syncs) and prints `Recuperando huecos
+desde …`; days already complete in that stretch are skipped. An explicit
+`--from` always re-fetches — it is the "reprocess this, I mean it" flag.
 
 ### Migrations
 
@@ -111,6 +116,9 @@ So user-written data lives where the ingest never writes:
 The `user_*` ones are deliberately **excluded from the UPSERT** and set on
 INSERT only. The endpoints return the resolved value (`effective_title`,
 `effective_sport`): yours if you set it, the source's otherwise.
+`review_status` is kept the same way with one exception: a sync moves `pending`
+to `auto` once the workout no longer needs review (you mapped its code in
+`[sport_types]`). `classified` and `ignored` are never touched.
 
 The `annotation` and `sport_style` tables follow the same rule by being tables no
 ingest touches. So does `source='manual'` on `workout`: the UPSERT keys on
@@ -167,7 +175,7 @@ timestamps are **unix seconds UTC**.
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/overview?date=` | Today's cards: latest BioCharge, readiness, steps, sleep score+duration, and `last_sync` |
+| `GET /api/overview?date=` | Today's cards: latest BioCharge, readiness, steps, sleep score+duration, `last_sync`, and `tz` — the timezone days are grouped by (the web app reads it at startup) |
 | `GET /api/daily?from&to` | Raw `daily_metrics` rows. `SELECT *` on purpose — a new column reaches clients without touching the endpoint |
 | `GET /api/hr?from&to[&bucket]` | `{series: [{ts, bpm}], stats: {min, avg, max}}` |
 | `GET /api/stress?from&to[&bucket]` | `{series: [{ts, value}], stats: {...}}` |
@@ -266,7 +274,10 @@ is `"error"` if any source's most recent attempt failed. Alert on it, or at
 minimum look at it.
 
 A failure is not fatal: a source that errors on a given day is simply not marked
-`ok` in `sync_state`, so the next incremental run retries it by itself.
+`ok` in `sync_state`, so the next incremental run retries it by itself, even
+after that day has left the window. The run still exits `1` (`0` when every
+source succeeded), so a systemd unit shows up as failed and a cron wrapper can
+alert on it.
 
 ### Strength workouts
 

@@ -11,7 +11,7 @@ ejecución — para que correr N veces deje la misma cuenta de filas en todas la
 tablas y el fichero no crezca sin límite.
 
 Uso:
-    uv run python -m ingest.run                       # ventana_dias del config, incremental
+    uv run python -m ingest.run                       # ventana_dias del config (+ huecos anteriores), incremental
     uv run python -m ingest.run --days 3
     uv run python -m ingest.run --from 2026-07-01 --to 2026-07-15
     uv run python -m ingest.run --force                # ignora sync_state, repide toda la ventana
@@ -60,10 +60,22 @@ COUNTED_TABLES = [
 # ---------------------------------------------------------------------------
 
 
-def _fetch_ok_pairs(conn: sqlite3.Connection) -> set[tuple[str, str]]:
-    """(source, day) ya confirmados 'ok' — usado por el filtro incremental."""
-    rows = conn.execute("SELECT source, day FROM sync_state WHERE status = 'ok'").fetchall()
-    return {(r[0], r[1]) for r in rows}
+def _fetch_ok_pairs(conn: sqlite3.Connection, tz: str, safety_days: int) -> set[tuple[str, str]]:
+    """(source, day) con un 'ok' DEFINITIVO — usado por el filtro incremental.
+
+    Un 'ok' solo es definitivo si se obtuvo a partir de la medianoche local de
+    ``day + safety_days``: la misma frontera a partir de la cual ``run_ingest``
+    deja de pedir el día siempre. Un día pedido mientras aún estaba en curso
+    (o antes de que la pulsera subiera nada) quedó 'ok' con datos parciales;
+    si contara como cerrado no se volvería a pedir nunca.
+    """
+    rows = conn.execute("SELECT source, day, last_ok_at FROM sync_state WHERE status = 'ok'")
+    return {
+        (source, day)
+        for source, day, last_ok_at in rows
+        if last_ok_at * 1000
+        >= _day_bounds_ms(date.fromisoformat(day) + timedelta(days=safety_days), tz)[0]
+    }
 
 
 def set_sync_state(conn: sqlite3.Connection, source: str, day: str, status: str) -> None:
@@ -201,11 +213,16 @@ def _upsert_daily(conn: sqlite3.Connection, day: str, **fields: Any) -> None:
 def _upsert_workouts(conn: sqlite3.Connection, workouts: list[dict], sport_types: dict) -> None:
     """UPSERT que preserva lo que ha escrito el usuario.
 
-    ``review_status``, ``user_sport``, ``user_title`` y ``notes`` se fijan SOLO
-    al INSERTAR: quedan fuera del ``DO UPDATE SET`` para que una re-ingesta no
-    pise ni la clasificación de la cola ni las ediciones manuales. Es la misma
-    regla que aísla la tabla ``annotation``: lo que escribe el usuario vive
-    donde la ingesta no escribe.
+    ``user_sport``, ``user_title`` y ``notes`` se fijan SOLO al INSERTAR:
+    quedan fuera del ``DO UPDATE SET`` para que una re-ingesta no pise las
+    ediciones manuales. Es la misma regla que aísla la tabla ``annotation``: lo
+    que escribe el usuario vive donde la ingesta no escribe.
+
+    ``review_status`` tiene una única excepción: 'pending' -> 'auto'. Un
+    usuario nuevo sincroniza ANTES de mapear sus codes en ``[sport_types]``;
+    sin esto, todo lo que entró por code desconocido se quedaría en la cola
+    después de mapearlo. 'classified' e 'ignored' son decisiones del usuario y
+    nunca se tocan; 'auto' tampoco vuelve a 'pending'.
 
     ``title`` SÍ se actualiza: es el ``sport_title`` que puso el usuario en la
     app de Zepp, o sea lo que dice la FUENTE. Si lo cambia allí, aquí se refleja;
@@ -222,7 +239,8 @@ def _upsert_workouts(conn: sqlite3.Connection, workouts: list[dict], sport_types
             "train_load=excluded.train_load, te=excluded.te, avg_hr=excluded.avg_hr, "
             "max_hr=excluded.max_hr, hr_zones=excluded.hr_zones, "
             "strength_scores=excluded.strength_scores, auto_recognized=excluded.auto_recognized, "
-            "title=excluded.title",
+            "title=excluded.title, review_status = CASE WHEN workout.review_status = 'pending' "
+            "AND excluded.review_status = 'auto' THEN 'auto' ELSE workout.review_status END",
             (
                 "zepp",
                 str(w["trackid"]),
@@ -531,10 +549,13 @@ def run_ingest(
 
     Sync incremental (sin él, una ventana de 30 días tardaba
     minutos): un ``(source, day)`` de ``PER_DAY_SOURCES`` que ya está en
-    ``sync_state`` con ``status='ok'`` se salta, salvo que caiga dentro de
-    ``safety_days`` desde ``today`` (datos de hoy/ayer son parciales o llegan
-    con retraso del servidor). Auto-reparable: un día en ``'error'`` no está
-    en el set de 'ok', así que se reintenta solo en el siguiente sync.
+    ``sync_state`` con un 'ok' definitivo (ver ``_fetch_ok_pairs``) se salta,
+    salvo que caiga dentro de ``safety_days`` desde ``today`` (datos de
+    hoy/ayer son parciales o llegan con retraso del servidor). Auto-reparable:
+    un día en ``'error'``, o 'ok' pero pedido antes de que cerrara, no está en
+    el set, así que se vuelve a pedir solo en el siguiente sync. Con un sync
+    diario esto no añade peticiones: la última vez que ``always_fetch`` pide
+    un día es en ``day + safety_days``, ya pasada su frontera.
     ``WINDOW_SOURCES`` no se filtra: ya es coste fijo (1 petición/ejecución) y
     el servidor puede revisar retroactivamente días ya "cerrados".
 
@@ -545,7 +566,7 @@ def run_ingest(
     safety_days = config.get("safety_days", 1)
     stats = {"ok": 0, "error": 0, "skipped": 0, "derived_hr": 0}
 
-    ok_pairs = _fetch_ok_pairs(conn) if incremental else set()
+    ok_pairs = _fetch_ok_pairs(conn, tz, safety_days) if incremental else set()
 
     # Plan de (source, day) a pedir (los saltados por incremental no entran).
     plan: list[tuple[str, date, Any, Any]] = []
@@ -646,6 +667,33 @@ def build_days(
     return [start + timedelta(days=i) for i in range((end - start).days + 1)]
 
 
+def _first_gap_day(
+    conn: sqlite3.Connection, window_start: date, tz: str, safety_days: int
+) -> date | None:
+    """Día más antiguo ANTERIOR a ``window_start`` sin 'ok' definitivo en
+    alguna fuente de ``PER_DAY_SOURCES``; None si no hay hueco.
+
+    El sync por defecto solo mira los ``ventana_dias`` últimos días: si pasan
+    más que eso entre dos syncs, o un día viejo quedó en 'error', ese hueco
+    sale de la ventana y no se volvería a pedir nunca. Se busca desde el primer
+    día con historial de una fuente por día: antes no hay nada que recuperar.
+    """
+    sources = [name for name, *_ in PER_DAY_SOURCES]
+    first = conn.execute(
+        f"SELECT MIN(day) FROM sync_state WHERE source IN ({','.join('?' * len(sources))})",
+        sources,
+    ).fetchone()[0]
+    if first is None:
+        return None
+    ok_pairs = _fetch_ok_pairs(conn, tz, safety_days)
+    day = date.fromisoformat(first)
+    while day < window_start:
+        if any((source, day.isoformat()) not in ok_pairs for source in sources):
+            return day
+        day += timedelta(days=1)
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m ingest.run", description="Ingesta Zepp: fetch → raw_ingest → parse → UPSERT."
@@ -662,7 +710,8 @@ def main(argv: list[str] | None = None) -> int:
 
     config = load_config()
     today = datetime.now(ZoneInfo(config["tz"])).date()
-    if args.days is None and args.from_day is None and args.to_day is None:
+    default_window = args.days is None and args.from_day is None and args.to_day is None
+    if default_window:
         args.days = config["ventana_dias"]
     days = build_days(today, days=args.days, from_day=args.from_day, to_day=args.to_day)
     # --from/--to explícito es ya una señal de "quiero reprocesar esto sí o
@@ -673,6 +722,14 @@ def main(argv: list[str] | None = None) -> int:
     init_db()
     conn = sqlite3.connect(DEFAULT_DB_PATH)
     try:
+        # Solo en modo por defecto: un rango explícito o --force mandan sobre
+        # esto. Los días ya definitivos del tramo ampliado los salta el filtro
+        # incremental, así que solo cuestan los huecos.
+        if default_window and not args.force:
+            gap = _first_gap_day(conn, days[0], config["tz"], config.get("safety_days", 1))
+            if gap is not None:
+                print(f"Recuperando huecos desde {gap.isoformat()} (anteriores a la ventana)")
+                days = build_days(today, from_day=gap)
         client = ZeppClient(ZeppAuth(config), config)
         print(f"Ventana: {days[0].isoformat()} → {days[-1].isoformat()} ({len(days)} día/s)")
         stats = run_ingest(conn, client, days, config, today=today, incremental=incremental)
@@ -686,7 +743,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {table}: {count}")
     finally:
         conn.close()
-    return 0
+    # Un cron o un timer solo ve el código de salida: un sync con errores no
+    # puede pasar por bueno.
+    return 1 if stats["error"] else 0
 
 
 if __name__ == "__main__":

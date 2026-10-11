@@ -99,7 +99,8 @@ All timestamps are **unix seconds UTC**. All `day` strings are `YYYY-MM-DD` in
 | `client.sport_history()` | `parse_sport_history(payload, sport_types)` | `[{trackid, type, end_time, run_time, avg_heart_rate, max_heart_rate, calorie, exercise_load, te, heart_range, auto_recognition, review_status, ...}, ...]` |
 
 `sport_types` is the `{code: name}` map from your config; any code missing from it
-gets `review_status: "pending"` instead of silently vanishing.
+gets `review_status: "pending"` instead of silently vanishing. So does every
+session the watch auto-detected (`auto_recognition: true`), mapped or not.
 
 **Three endpoints are exposed but have no parser and are not ingested** — they
 are validated and ready if you want them, you just handle the raw dict yourself:
@@ -142,8 +143,8 @@ orphaned).
 
 **Track what succeeded, per source and per day.** A `sync_state(source, day,
 last_ok_at, status)` table turns the next run into an incremental one — skip
-anything already `ok` — and gives you a "last successful sync" signal. Without it,
-a nightly job that quietly dies leaves you looking at stale data believing it is
+anything already `ok`, provided it was fetched after the day closed — and gives
+you a "last successful sync" signal. Without it, a nightly job that quietly dies leaves you looking at stale data believing it is
 current. Days near today are always re-fetched anyway: the server backfills them.
 
 **Parallelise the fetch, serialise the write.** A 30-day window is ~300 GETs.
