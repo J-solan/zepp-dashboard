@@ -311,7 +311,7 @@ export function Workouts({ range }: TabProps) {
                     </div>
 
                     <SessionStats workout={selected} />
-                    <WorkoutDetail workout={selected} onEdited={refetch} />
+                    <WorkoutDetail key={selected.id} workout={selected} onEdited={refetch} />
                   </>
                 ) : (
                   <p className="text-sm text-ink-secondary">Elige una sesión de la lista.</p>
