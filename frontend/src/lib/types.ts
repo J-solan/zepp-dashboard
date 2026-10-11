@@ -1,5 +1,7 @@
 export interface Overview {
   date: string
+  /** Zona con la que el backend agrupa los días (`tz` de su config). */
+  tz: string
   biocharge: {
     ts: number
     total: number | null

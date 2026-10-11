@@ -10,6 +10,21 @@ import '@fontsource/ibm-plex-mono/latin-400.css'
 import '@fontsource/ibm-plex-mono/latin-500.css'
 import './index.css'
 import App from './App.tsx'
+import { fetchJson } from './lib/api'
+import { setAppTz } from './lib/date'
+import type { Overview } from './lib/types'
+
+// "Hoy", las medianoches y las horas se calculan en la zona del backend, y App
+// ya las usa en su primer render (el rango por defecto): se pide antes de pintar.
+// Si no llega (sin red ni copia en caché, 401 sin token, zona desconocida...) se
+// queda la del navegador; el timeout evita una pantalla en blanco indefinida con
+// mala red. Tras guardar el token, TokenGate recarga y esto se repite ya con él.
+try {
+  const { tz } = await fetchJson<Overview>('/api/overview', { signal: AbortSignal.timeout(5000) })
+  setAppTz(tz)
+} catch {
+  // zona del navegador, el valor por defecto de lib/date
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

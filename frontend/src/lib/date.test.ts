@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { dayBoundaryTs, dayStartTs, isoDaysAgo, isoPlusDays, rangeBoundsTs, todayISO } from './date'
+import {
+  appTimeToTs,
+  dayBoundaryTs,
+  dayStartTs,
+  isoDaysAgo,
+  isoPlusDays,
+  rangeBoundsTs,
+  setAppTz,
+  todayISO,
+} from './date'
 
 describe('todayISO', () => {
   afterEach(() => {
@@ -120,5 +129,66 @@ describe('isoPlusDays', () => {
   it('cruza el cambio de horario sin saltarse ni repetir día', () => {
     expect(isoPlusDays('2026-03-28', 1)).toBe('2026-03-29')
     expect(isoPlusDays('2026-10-24', 1)).toBe('2026-10-25')
+  })
+})
+
+describe('appTimeToTs', () => {
+  it('interpreta la hora tecleada en la zona de la app, no en la de la máquina', () => {
+    // 18:00 en Madrid (CEST) = 16:00 UTC
+    expect(appTimeToTs('2026-07-24T18:00')).toBe(Date.parse('2026-07-24T16:00:00Z') / 1000)
+  })
+
+  it('acierta la madrugada del cambio de primavera (01:30 aún es CET)', () => {
+    expect(appTimeToTs('2026-03-29T01:30')).toBe(Date.parse('2026-03-29T00:30:00Z') / 1000)
+  })
+
+  it('un campo vacío da NaN, no una excepción', () => {
+    expect(appTimeToTs('')).toBeNaN()
+  })
+})
+
+// La zona la fija el backend al arrancar. Una con desfase negativo destapa la
+// aritmética de calendario que pasa por la zona: allí la medianoche UTC todavía
+// es el día anterior.
+describe('con la zona fijada a America/New_York (UTC-5/-4)', () => {
+  beforeEach(() => setAppTz('America/New_York'))
+
+  afterEach(() => {
+    setAppTz('Europe/Madrid')
+    vi.useRealTimers()
+  })
+
+  it('isoPlusDays no se va al día anterior', () => {
+    expect(isoPlusDays('2026-07-31', 1)).toBe('2026-08-01')
+    expect(isoPlusDays('2026-08-01', -1)).toBe('2026-07-31')
+    // 2026-03-08: cambio de hora en Nueva York
+    expect(isoPlusDays('2026-03-07', 1)).toBe('2026-03-08')
+    expect(isoPlusDays('2026-03-08', 1)).toBe('2026-03-09')
+  })
+
+  it('todayISO e isoDaysAgo usan el día de Nueva York cerca de medianoche', () => {
+    // 2026-07-25T03:30Z = 2026-07-24 23:30 en Nueva York (EDT): UTC ya es 25.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-25T03:30:00Z'))
+    expect(todayISO()).toBe('2026-07-24')
+    expect(isoDaysAgo(0)).toBe('2026-07-24')
+    expect(isoDaysAgo(1)).toBe('2026-07-23')
+  })
+
+  it('isoDaysAgo cruza el cambio de hora sin saltarse día', () => {
+    // 2026-03-09T04:30Z = 2026-03-09 00:30 en Nueva York (EDT)
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-09T04:30:00Z'))
+    expect(isoDaysAgo(1)).toBe('2026-03-08')
+    expect(isoDaysAgo(2)).toBe('2026-03-07')
+  })
+
+  it('dayStartTs ancla en la medianoche de Nueva York y el día del cambio dura 23 h', () => {
+    expect(dayStartTs('2026-03-08')).toBe(Date.parse('2026-03-08T05:00:00Z') / 1000)
+    expect(dayStartTs('2026-03-09') - dayStartTs('2026-03-08')).toBe(23 * 3600)
+  })
+
+  it('appTimeToTs acierta las horas justo después del cambio (ya EDT)', () => {
+    expect(appTimeToTs('2026-03-08T03:30')).toBe(Date.parse('2026-03-08T07:30:00Z') / 1000)
   })
 })

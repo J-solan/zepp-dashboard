@@ -4,6 +4,7 @@ import { SportSuggestions } from '../components/SportSuggestions'
 import { useSports } from '../hooks/useSports'
 import { fetchJson } from '../lib/api'
 import { clearApiCache } from '../hooks/useApi'
+import { appTimeToTs, todayISO } from '../lib/date'
 import { sportLabel } from '../lib/workouts'
 
 const inputClass =
@@ -12,17 +13,8 @@ const inputClass =
 
 const OTHER = ' otro'
 
-/** `datetime-local` da 'YYYY-MM-DDTHH:mm' en hora LOCAL sin zona; `new Date()`
- * lo interpreta en la del navegador, que es justo la que el usuario tecleó. */
-const toTs = (local: string) => Math.floor(new Date(local).getTime() / 1000)
-
-/** Un valor inicial cómodo: hoy a las 18:00, redondeado. */
-function defaultStart(): string {
-  const now = new Date()
-  now.setHours(18, 0, 0, 0)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
-}
+/** Un valor inicial cómodo: hoy (en la zona de la app) a las 18:00. */
+const defaultStart = () => `${todayISO()}T18:00`
 
 /** Alta de un entreno que hiciste sin el reloj.
  *
@@ -45,7 +37,10 @@ export function NewWorkout({ onCreated }: { onCreated: () => void }) {
   const [error, setError] = useState<string | null>(null)
 
   const submit = async () => {
-    const startTs = toTs(start)
+    // `datetime-local` da 'YYYY-MM-DDTHH:mm' sin zona. Se interpreta en la de la
+    // app, no en la del navegador (`new Date()`): es en la que se pintan los
+    // entrenos, así que lo tecleado es la hora que se verá luego en la lista.
+    const startTs = appTimeToTs(start)
     const mins = Number(minutes)
     if (!Number.isFinite(startTs)) return setError('Fecha no válida')
     if (!Number.isFinite(mins) || mins <= 0) return setError('La duración tiene que ser mayor que cero')

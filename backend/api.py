@@ -413,6 +413,9 @@ def get_overview(
 
     return {
         "date": day_str,
+        # La web lo pide al arrancar y calcula con ella "hoy", las medianoches y
+        # las horas: sin esto usaría la zona del navegador y no casaría con estos días.
+        "tz": tz,
         "biocharge": biocharge,
         "readiness": metrics_row["readiness"] if metrics_row else None,
         "steps": metrics_row["steps"] if metrics_row else None,

@@ -73,7 +73,7 @@ manager, no component library. About 3500 lines.
 src/
   App.tsx           Tab shell + the app-wide date range. The tab list is one array.
   lib/              Pure functions. No React. Unit-tested.
-    date.ts           local-timezone date handling
+    date.ts           dates in the server's `tz` (from /api/overview, before the first render)
     days.ts           align rows to a day axis, gaps included
     dateRange.ts      range presets (day/week/month)
     baseline.ts       quantiles of your own history, deviation in IQR

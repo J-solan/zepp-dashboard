@@ -1,8 +1,16 @@
-// Zona horaria de la app (misma que ingest/config.toml y backend/api.py
-// DEFAULT_TZ): "hoy" debe calcularse en esta tz local, no en UTC. Cerca de
-// medianoche (00:00-02:00 en verano) la fecha UTC todavía es la del día
-// anterior y desalinea el rango pedido al backend respecto al día local real.
-export const APP_TZ = 'Europe/Madrid'
+// Zona horaria de la app: la `tz` del config del backend, con la que agrupa los
+// días. "Hoy" debe calcularse en esta tz local, no en UTC: cerca de medianoche
+// la fecha UTC ya es otra y desalinea el rango pedido al backend respecto al día
+// local real. main.tsx la fija desde /api/overview antes del primer render; hasta
+// entonces, o si la API no responde, vale la del navegador. Es un `let`
+// exportado a propósito: quien la importa ve siempre el valor actual.
+export let APP_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+/** Fija la zona de la app. Una zona que el navegador no conoce lanza RangeError
+ * aquí (al resolverla), no en cada formateo posterior. */
+export function setAppTz(tz: string): void {
+  APP_TZ = new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone
+}
 
 function isoInAppTz(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -25,10 +33,7 @@ export function dayOfTs(ts: number): string {
 }
 
 export function isoDaysAgo(days: number): string {
-  const [year, month, day] = todayISO().split('-').map(Number)
-  const anchor = new Date(Date.UTC(year, month - 1, day))
-  anchor.setUTCDate(anchor.getUTCDate() - days)
-  return isoInAppTz(anchor)
+  return isoPlusDays(todayISO(), -days)
 }
 
 /** Nº de días cubiertos por [from, to] local, ambos inclusive. */
@@ -56,13 +61,24 @@ function tzOffsetMs(at: Date): number {
   return asUtc - at.getTime()
 }
 
+/** Hora de reloj 'YYYY-MM-DDTHH:mm' en APP_TZ (lo que da un `<input
+ * type="datetime-local">`) -> unix segundos UTC. NaN si no es una fecha.
+ *
+ * El desfase se mira dos veces: el primero se toma en un instante que puede
+ * caer al otro lado de un cambio de hora (la madrugada del cambio en Madrid,
+ * las horas siguientes en América); el segundo ya es el del instante real. */
+export function appTimeToTs(local: string): number {
+  const asIfUtc = Date.parse(`${local}Z`)
+  if (Number.isNaN(asIfUtc)) return NaN // campo vacío o a medias: lo valida quien llama
+  const guess = asIfUtc - tzOffsetMs(new Date(asIfUtc))
+  return (asIfUtc - tzOffsetMs(new Date(guess))) / 1000
+}
+
 /** Medianoche local (APP_TZ) del día ISO dado, en unix segundos UTC. Es el
  * mismo anclaje que usa el backend (`_day_range_ts`), así que los ts de las
  * series caen exactamente dentro de estos límites. */
 export function dayStartTs(day: string): number {
-  const [year, month, d] = day.split('-').map(Number)
-  const asIfUtc = Date.UTC(year, month - 1, d)
-  return (asIfUtc - tzOffsetMs(new Date(asIfUtc))) / 1000
+  return appTimeToTs(`${day}T00:00`)
 }
 
 /** Límites [inicio, fin) del rango de días local, en unix segundos. `fin` es
@@ -81,10 +97,11 @@ export function dayBoundaryTs(from: string, to: string): number[] {
   return out
 }
 
-/** Día ISO desplazado `days` (puede ser negativo) sobre el calendario local. */
+/** Día ISO desplazado `days` (puede ser negativo) sobre el calendario. Es
+ * aritmética de calendario pura y se hace entera en UTC: pasar el resultado por
+ * APP_TZ daba el día anterior en zonas con desfase negativo (América), donde la
+ * medianoche UTC todavía es "ayer". */
 export function isoPlusDays(day: string, days: number): string {
   const [year, month, d] = day.split('-').map(Number)
-  const anchor = new Date(Date.UTC(year, month - 1, d))
-  anchor.setUTCDate(anchor.getUTCDate() + days)
-  return isoInAppTz(anchor)
+  return new Date(Date.UTC(year, month - 1, d + days)).toISOString().slice(0, 10)
 }

@@ -134,6 +134,15 @@ def test_overview_defaults_to_today_in_tz(client: TestClient):
     assert resp.json()["date"] == datetime.now(ZoneInfo(TZ)).date().isoformat()
 
 
+def test_overview_exposes_the_tz_it_groups_days_with(db_path: Path):
+    """La web calcula "hoy", medianoches y horas con esta zona: sin ella usaría
+    la del navegador y descuadraría los días respecto a los del backend."""
+    client = TestClient(create_app(db_path=db_path, tz="America/New_York"))
+    resp = client.get("/api/overview")
+    assert resp.status_code == 200
+    assert resp.json()["tz"] == "America/New_York"
+
+
 def test_overview_empty_day_returns_nulls_not_errors(client: TestClient):
     empty_day = FIXTURE_DAY - timedelta(days=365)
     resp = client.get("/api/overview", params={"date": empty_day.isoformat()})
