@@ -97,10 +97,11 @@ class ZeppClient:
                 continue
 
             # El token caducado se renueva una sola vez y se reintenta ya, sin
-            # esperar: no es congestión, es credencial.
+            # esperar: no es congestión, es credencial. Se pasa el token que
+            # falló para que, si otro worker ya lo renovó, no se re-loguee otra vez.
             if response.status_code == 401 and not refreshed:
                 refreshed = True
-                app_token, _ = self.auth.handle_401()
+                app_token, _ = self.auth.handle_401(app_token)
                 continue
 
             if response.status_code in RETRY_STATUS and attempt < MAX_ATTEMPTS:

@@ -125,22 +125,41 @@ def test_handle_401_relogs_in_once_and_returns_fresh_token(fake_httpx, tmp_path)
     a.get_app_token()
     assert fake_httpx.calls == []  # cargado de cache, aún sin red
 
-    app_token, user_id = a.handle_401()
+    app_token, user_id = a.handle_401("STALE")
 
     assert (app_token, user_id) == ("FRESH", "999")
     assert len(fake_httpx.calls) == 2
 
 
-def test_handle_401_twice_raises_without_looping(fake_httpx, tmp_path):
+def _auth_with_stale_cache(fake_httpx, tmp_path) -> auth.ZeppAuth:
+    cache_path = tmp_path / "app_token.json"
+    cache_path.write_text(json.dumps({"app_token": "STALE", "user_id": "999", "cached_at": "x"}))
     fake_httpx.queue(_redirect_response())
-    fake_httpx.queue(_login_response())
+    fake_httpx.queue(_login_response(app_token="FRESH", user_id="999"))
+    a = auth.ZeppAuth(CONFIG, token_cache_path=cache_path)
+    a.get_app_token()
+    return a
 
-    a = auth.ZeppAuth(CONFIG, token_cache_path=tmp_path / "app_token.json")
-    a.handle_401()
+
+def test_handle_401_with_already_renewed_token_returns_new_one_without_login(fake_httpx, tmp_path):
+    """Varios GET en paralelo reciben 401 con el mismo token caducado: solo
+    el primero re-loguea; el resto recibe el token nuevo, sin AuthError."""
+    a = _auth_with_stale_cache(fake_httpx, tmp_path)
+
+    assert a.handle_401("STALE") == ("FRESH", "999")
+    assert a.handle_401("STALE") == ("FRESH", "999")
+    assert len(fake_httpx.calls) == 2  # un único login
+
+
+def test_handle_401_with_renewed_token_raises_without_looping(fake_httpx, tmp_path):
+    """Un 401 con el token recién obtenido ya no es caducidad: se mantiene
+    el tope de 1 re-login por ejecución."""
+    a = _auth_with_stale_cache(fake_httpx, tmp_path)
+    a.handle_401("STALE")
     assert len(fake_httpx.calls) == 2
 
     with pytest.raises(auth.AuthError):
-        a.handle_401()
+        a.handle_401("FRESH")
     assert len(fake_httpx.calls) == 2  # no dispara una tercera petición (respeta el 429)
 
 
@@ -173,6 +192,22 @@ def test_login_is_serialized_under_concurrency(tmp_path):
 
     assert len(logins) == 1
     assert set(results) == {("TOK", "UID")}
+
+
+def test_failed_relogin_is_not_retried_by_waiting_workers(fake_httpx, tmp_path):
+    """Si el re-login falla (p. ej. 429), los workers que esperaban el lock no
+    lo reintentan: martillear el login solo alarga el bloqueo."""
+    cache_path = tmp_path / "app_token.json"
+    cache_path.write_text(json.dumps({"app_token": "STALE", "user_id": "999", "cached_at": "x"}))
+    fake_httpx.queue(httpx.Response(429, text="rate limited"))
+    a = auth.ZeppAuth(CONFIG, token_cache_path=cache_path)
+    a.get_app_token()
+
+    with pytest.raises(auth.AuthError):
+        a.handle_401("STALE")
+    with pytest.raises(auth.AuthError):
+        a.handle_401("STALE")
+    assert len(fake_httpx.calls) == 1
 
 
 def test_tokens_phase_non_303_raises_auth_error(fake_httpx, tmp_path):

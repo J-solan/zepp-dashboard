@@ -10,7 +10,8 @@ Login en 2 fases, validado en vivo y basado en el flujo de
      (que usa ``com.huami.midong``) — ver ``docs/zepp-api.md``.
 
 Persiste el ``app_token`` en disco (chmod 600) y lo reutiliza mientras el
-servidor lo acepte; ante un 401 el llamador debe invocar ``handle_401``.
+servidor lo acepte; ante un 401 el llamador debe invocar ``handle_401`` con
+el token que usó.
 
 **Refresh token**: la fase 1 devuelve también un ``refresh_token``, pero no
 se ha encontrado ningún endpoint de renovación en las referencias consultadas
@@ -128,19 +129,31 @@ class ZeppAuth:
                 self._login()
             return self._app_token, self._user_id  # type: ignore[return-value]
 
-    def handle_401(self) -> tuple[str, str]:
-        """Re-login completo ante 401. Máximo 1 intento por ejecución."""
+    def handle_401(self, stale: str) -> tuple[str, str]:
+        """Re-login completo ante 401. Máximo 1 intento por ejecución.
+
+        ``stale`` es el token con el que falló la petición. Los GET van en
+        paralelo, así que al caducar el token varios reciben 401 a la vez: el
+        primero en coger el lock re-loguea y el resto, al ver que el token ya
+        no es el suyo, se lleva el nuevo. Sin esta comprobación cada uno lo
+        tomaría por un segundo 401 y fallaría culpando a las credenciales.
+        """
         with self._lock:
+            if self._app_token != stale:  # otro hilo ya lo renovó mientras esperaba
+                return self._app_token, self._user_id  # type: ignore[return-value]
             if self._logged_in_this_run:
                 raise AuthError("401 tras re-login: credenciales inválidas o cuenta bloqueada")
             self._login()
             return self._app_token, self._user_id  # type: ignore[return-value]
 
     def _login(self) -> None:
+        # Se marca ANTES de intentarlo: si falla (429, credenciales), los
+        # workers que esperaban el lock no lo repiten contra un endpoint que
+        # castiga los reintentos.
+        self._logged_in_this_run = True
         access_token = self._fetch_access_token()
         self._exchange_for_app_token(access_token)
         self._save_cache()
-        self._logged_in_this_run = True
 
     def _fetch_access_token(self) -> str:
         payload = {

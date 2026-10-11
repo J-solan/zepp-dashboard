@@ -8,12 +8,15 @@ endpoints validados (ver docs/zepp-api.md).
 
 from __future__ import annotations
 
+import threading
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
 import httpx
 import pytest
 
+from ingest import auth as auth_mod
 from ingest import client as client_mod
 
 CONFIG = {"region_host": "api-mifit-de2.zepp.com", "tz": "Europe/Madrid"}
@@ -25,13 +28,15 @@ class FakeAuth:
         self.user_id_value = user_id
         self.get_calls = 0
         self.handle_401_calls = 0
+        self.stale_tokens: list[str] = []
 
     def get_app_token(self) -> tuple[str, str]:
         self.get_calls += 1
         return self.app_token, self.user_id_value
 
-    def handle_401(self) -> tuple[str, str]:
+    def handle_401(self, stale: str) -> tuple[str, str]:
         self.handle_401_calls += 1
+        self.stale_tokens.append(stale)
         self.app_token = "FRESH"
         return self.app_token, self.user_id_value
 
@@ -63,8 +68,39 @@ def test_401_triggers_single_retry_with_fresh_token(fake_httpx):
 
     assert result == {"ok": True}
     assert auth_stub.handle_401_calls == 1
+    assert auth_stub.stale_tokens == ["TOK"]  # avisa con el token que falló
     assert len(fake_httpx.calls) == 2
     assert fake_httpx.calls[1].headers["apptoken"] == "FRESH"
+
+
+def test_401_simultaneo_en_varios_workers_hace_un_solo_login(fake_httpx, tmp_path):
+    """Al caducar el token, los workers de run.py reciben 401 a la vez.
+    Solo uno debe re-loguear; los demás reintentan con el token nuevo en vez
+    de fallar con AuthError culpando a las credenciales."""
+    workers = 4
+    barrier = threading.Barrier(workers, timeout=5)
+
+    def responder(record):
+        if "/registrations/tokens" in record.url:
+            return httpx.Response(303, headers={"location": "https://x/?access=A2&refresh=R2"})
+        if "/client/login" in record.url:
+            return httpx.Response(200, json={"token_info": {"app_token": "FRESH", "user_id": "777"}})
+        if record.headers["apptoken"] == "STALE":
+            barrier.wait()  # los 4 GET caducados salen antes de que llegue ningún 401
+            return httpx.Response(401, json={})
+        return httpx.Response(200, json={"ok": True})
+
+    for _ in range(workers * 2 + 2):  # GET caducado + reintento por worker, y las 2 fases del login
+        fake_httpx.queue(responder)
+    cache_path = tmp_path / "app_token.json"
+    cache_path.write_text('{"app_token": "STALE", "user_id": "777"}')
+    c = client_mod.ZeppClient(auth_mod.ZeppAuth({"email": "e", "password": "p"}, cache_path), CONFIG)
+
+    with ThreadPoolExecutor(workers) as pool:
+        results = list(pool.map(lambda _: c.weight(1000, 2000), range(workers)))
+
+    assert results == [{"ok": True}] * workers
+    assert sum("/registrations/tokens" in r.url for r in fake_httpx.calls) == 1
 
 
 def test_second_401_after_retry_raises_with_endpoint_and_status(fake_httpx):
