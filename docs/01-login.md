@@ -13,7 +13,7 @@ away from the rest of this repo.
 Requires Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone <this repo>
+git clone https://github.com/J-solan/zepp-dashboard.git
 cd zepp-dashboard
 uv sync
 ```
@@ -61,12 +61,13 @@ Both headers matter:
 
 ```bash
 TOKEN="5f3a..."
-UID="1234567890"
+USER_ID="1234567890"
+ZEPP_HOST="api-mifit-de2.zepp.com"   # your region_host
 
 curl -s \
   -H "apptoken: $TOKEN" \
   -H "appname: com.huami.midong" \
-  "https://api-mifit-de2.zepp.com/v1/data/band_data.json?userid=$UID&from_date=2026-08-01&to_date=2026-08-01&query_type=detail"
+  "https://$ZEPP_HOST/v1/data/band_data.json?userid=$USER_ID&from_date=2026-08-01&to_date=2026-08-01&query_type=detail"
 ```
 
 Every endpoint is listed in **[zepp-api.md](zepp-api.md)**.
@@ -83,7 +84,7 @@ takes one command, and you do not need the database or the web app for it.
 
 ```bash
 curl -s -H "apptoken: $TOKEN" -H "appname: com.huami.midong" \
-  "https://$HOST/v1/sport/run/history.json?source=run.mifit.huami.com" \
+  "https://$ZEPP_HOST/v1/sport/run/history.json?source=run.mifit.huami.com" \
   | jq '.data.summary | group_by(.type) | map({type: .[0].type, n: length})'
 ```
 
@@ -104,7 +105,7 @@ entry. `trackid` is the start time.
 
 ```bash
 curl -s -H "apptoken: $TOKEN" -H "appname: com.huami.midong" \
-  "https://$HOST/v1/sport/run/history.json?source=run.mifit.huami.com" \
+  "https://$ZEPP_HOST/v1/sport/run/history.json?source=run.mifit.huami.com" \
   | jq -c '.data.summary | max_by(.trackid | tonumber)
            | {type, sport_title, start: (.trackid | tonumber | todate),
               min: (.run_time | tonumber / 60 | floor),
@@ -127,7 +128,7 @@ deliberately tracked:
 
 ```bash
 curl -s -H "apptoken: $TOKEN" -H "appname: com.huami.midong" \
-  "https://$HOST/v1/sport/run/history.json?source=run.mifit.huami.com" \
+  "https://$ZEPP_HOST/v1/sport/run/history.json?source=run.mifit.huami.com" \
   | jq -c '[.data.summary[] | select(.auto_recognition == false)
             | {type, sport_title, start: (.trackid | tonumber | todate),
                min: (.run_time | tonumber / 60 | floor)}]'
