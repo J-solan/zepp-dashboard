@@ -13,12 +13,12 @@ export interface UseAnnotationsResult {
 
 /** Anotaciones del rango visible, con alta y baja.
  *
- * Tras escribir se vacía la caché de `useApi` y se refetchea: la misma nota
- * sale en la gráfica de FC y en la de estrés, que son componentes hermanos sin
- * estado compartido, y si no se invalida la caché una se quedaría desfasada. */
+ * Tras escribir se vacía la caché de `useApi`, que recarga todo lo montado: la
+ * misma nota sale en la gráfica de FC y en la de estrés, que son componentes
+ * hermanos sin estado compartido, y las dos se repintan a la vez. */
 export function useAnnotations(range: DateRange): UseAnnotationsResult {
   const path = `/api/annotations?from=${range.from}&to=${range.to}`
-  const { data, error, refetch } = useApi<Annotation[]>(path)
+  const { data, error } = useApi<Annotation[]>(path)
 
   const create = useCallback(
     async (start_ts: number, end_ts: number, text: string) => {
@@ -28,18 +28,16 @@ export function useAnnotations(range: DateRange): UseAnnotationsResult {
         body: JSON.stringify({ start_ts, end_ts, text }),
       })
       clearApiCache()
-      refetch()
     },
-    [refetch],
+    [],
   )
 
   const remove = useCallback(
     async (id: number) => {
       await fetchJson<void>(`/api/annotations/${id}`, { method: 'DELETE' })
       clearApiCache()
-      refetch()
     },
-    [refetch],
+    [],
   )
 
   return { annotations: data ?? [], error, create, remove }

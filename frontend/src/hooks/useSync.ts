@@ -1,17 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, fetchJson } from '../lib/api'
 import { clearApiCache } from './useApi'
 import type { SyncStatus } from '../lib/types'
 
 const POLL_MS = 2000
 
-/** Dispara /api/sync y sondea /api/sync/status hasta que termine (ok/error). */
-export function useSync(onFinished: () => void) {
+/** Dispara /api/sync y sondea /api/sync/status hasta que termine (ok/error).
+ * Al acabar vacía la caché de useApi, que repinta todo lo montado. */
+export function useSync() {
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [triggerError, setTriggerError] = useState<string | null>(null)
   const [polling, setPolling] = useState(false)
-  const onFinishedRef = useRef(onFinished)
-  onFinishedRef.current = onFinished
 
   // Al montar: si ya hay un sync en curso (p.ej. tras recargar la página),
   // engancharse al polling en vez de mostrar el botón como si nada pasara.
@@ -32,8 +31,7 @@ export function useSync(onFinished: () => void) {
           setStatus(s)
           if (s.status !== 'running') {
             setPolling(false)
-            clearApiCache() // el sync cambió los datos: invalida la caché por URL
-            onFinishedRef.current()
+            clearApiCache() // el sync cambió los datos: recarga todo lo montado
           }
         })
         .catch((err: Error) => {

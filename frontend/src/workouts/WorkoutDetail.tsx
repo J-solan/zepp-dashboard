@@ -103,7 +103,7 @@ function HrZones({ zones }: { zones: Workout['hr_zones'] }) {
  * strap; vóley, auto-detectados y 223 reclasificados = solo el strap. Es la
  * misma pieza para los dos casos porque el bloque fisiológico es idéntico:
  * cambia si hay o no tabla de series encima. */
-export function WorkoutDetail({ workout, onEdited }: { workout: Workout; onEdited: () => void }) {
+export function WorkoutDetail({ workout }: { workout: Workout }) {
   // El lado fisiológico vive en el workout del strap cuando este viene de Hevy.
   const phys = workout.strap ?? workout
   const overlay = useMemo(
@@ -140,7 +140,7 @@ export function WorkoutDetail({ workout, onEdited }: { workout: Workout; onEdite
         />
       )}
 
-      <WorkoutEditor workout={workout} onSaved={onEdited} />
+      <WorkoutEditor workout={workout} />
     </div>
   )
 }

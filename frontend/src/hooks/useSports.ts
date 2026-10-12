@@ -40,9 +40,8 @@ export function useSports(): SportsResult {
     async (path: string, init: RequestInit) => {
       await fetchJson(path, init)
       clearApiCache()
-      refetch()
     },
-    [refetch],
+    [],
   )
 
   const save = useCallback(

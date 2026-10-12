@@ -24,12 +24,21 @@ export interface ReviewQueue {
  * panel que se abre al pulsarla. Con un `useApi` en cada uno, clasificar
  * dejaría el badge desfasado hasta el siguiente refetch.
  */
-export function useReviewQueue(onResolved: () => void): ReviewQueue {
-  const { data, refetch } = useApi<PendingWorkout[]>('/api/workouts/pending')
+export function useReviewQueue(): ReviewQueue {
+  const { data } = useApi<PendingWorkout[]>('/api/workouts/pending')
   // Ids ya resueltos en esta pantalla: se retiran de la lista antes de que
   // conteste el servidor (optimistic) y vuelven si el POST falla.
   const [resolved, setResolved] = useState<number[]>([])
   const [error, setError] = useState<string | null>(null)
+
+  // Con cada lista nueva del servidor se olvidan los ids que ya no trae: si no,
+  // un entreno que vuelve a pendiente ("Recuperar") seguiría oculto para
+  // siempre. Los que aún trae (POST en vuelo) siguen ocultos.
+  const [seen, setSeen] = useState(data)
+  if (data !== seen) {
+    setSeen(data)
+    setResolved((ids) => ids.filter((id) => data?.some((w) => w.id === id)))
+  }
 
   const review = useCallback(
     async (id: number, body: ReviewBody) => {
@@ -42,14 +51,12 @@ export function useReviewQueue(onResolved: () => void): ReviewQueue {
           body: JSON.stringify(body),
         })
         clearApiCache()
-        refetch()
-        onResolved()
       } catch (err) {
         setResolved((ids) => ids.filter((x) => x !== id))
         setError((err as Error).message)
       }
     },
-    [refetch, onResolved],
+    [],
   )
 
   return { pending: (data ?? []).filter((w) => !resolved.includes(w.id)), error, review }

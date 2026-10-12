@@ -48,7 +48,7 @@ export function Panel({ range }: TabProps) {
   const today = todayISO()
 
   const { data: overview, loading, error, refetch } = useApi<Overview>('/api/overview')
-  const { isSyncing, triggerError, trigger } = useSync(refetch)
+  const { isSyncing, triggerError, trigger } = useSync()
   const { styles } = useSports()
 
   const { data: dailyRange } = useApi<DailyMetrics[]>(`/api/daily?from=${range.from}&to=${range.to}`)

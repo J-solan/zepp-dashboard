@@ -30,7 +30,7 @@ export interface WorkoutEdit {
  * que esperar. Al guardar se invalida la caché para que la lista se repinte con
  * el título nuevo.
  */
-export function useWorkoutEdit(workoutId: number, onSaved: () => void): WorkoutEdit {
+export function useWorkoutEdit(workoutId: number): WorkoutEdit {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,7 +41,6 @@ export function useWorkoutEdit(workoutId: number, onSaved: () => void): WorkoutE
       try {
         await fetchJson<Workout>(path, init)
         clearApiCache()
-        onSaved()
         return true
       } catch (err) {
         setError((err as Error).message)
@@ -50,7 +49,7 @@ export function useWorkoutEdit(workoutId: number, onSaved: () => void): WorkoutE
         setSaving(false)
       }
     },
-    [onSaved],
+    [],
   )
 
   const save = useCallback(

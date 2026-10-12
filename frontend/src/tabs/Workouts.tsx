@@ -110,7 +110,7 @@ export function Workouts({ range }: TabProps) {
     `/api/workouts?from=${range.from}&to=${range.to}${showIgnored ? '&include_ignored=true' : ''}`,
   )
   const { data: daily } = useApi<DailyMetrics[]>(`/api/daily?from=${range.from}&to=${range.to}`)
-  const queue = useReviewQueue(refetch)
+  const queue = useReviewQueue()
   const { styles } = useSports()
 
   const sports = useMemo(() => sportsPresent(data ?? []), [data])
@@ -208,10 +208,7 @@ export function Workouts({ range }: TabProps) {
 
       <Sheet open={newOpen} onClose={() => setNewOpen(false)} title="Nuevo entreno">
         <NewWorkout
-          onCreated={() => {
-            setNewOpen(false)
-            refetch()
-          }}
+          onCreated={() => setNewOpen(false)}
         />
       </Sheet>
 
@@ -311,7 +308,7 @@ export function Workouts({ range }: TabProps) {
                     </div>
 
                     <SessionStats workout={selected} />
-                    <WorkoutDetail key={selected.id} workout={selected} onEdited={refetch} />
+                    <WorkoutDetail key={selected.id} workout={selected} />
                   </>
                 ) : (
                   <p className="text-sm text-ink-secondary">Elige una sesión de la lista.</p>
