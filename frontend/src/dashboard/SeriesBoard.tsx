@@ -13,7 +13,7 @@ import type { DateRange } from '../lib/dateRange'
 
 // Un carril por métrica, todos sobre el MISMO eje de tiempo: leer una columna
 // vertical es leer un día entero. Ese es el motivo de que esto sea un solo SVG
-// dibujado a mano y no siete gráficas apiladas.
+// dibujado a mano y no una gráfica apilada por métrica.
 const X0 = 96
 const X1 = 1020
 const LANE_H = 38
@@ -56,7 +56,7 @@ interface SeriesBoardProps {
 
 /** Las series diarias del periodo sobre un eje común, más el carril de entrenos.
  *
- * Cada carril lleva su propio mín–máx rotulado a la derecha: los ejes están
+ * Cada carril lleva su propio mín–máx rotulado a la izquierda: los ejes están
  * truncados (si no, readiness viviría en el 80 % superior y no se vería nada)
  * y eso hay que declararlo, no esconderlo.
  *

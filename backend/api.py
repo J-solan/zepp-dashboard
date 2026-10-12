@@ -25,6 +25,7 @@ import json
 import sqlite3
 import threading
 import time
+import tomllib
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Literal
@@ -42,6 +43,9 @@ from ingest.config import load_config
 from ingest.db import DEFAULT_DB_PATH, init_db
 
 ROOT = Path(__file__).resolve().parent.parent
+# La versión vive solo en pyproject.toml. El proyecto no se instala como
+# paquete, así que importlib.metadata no la ve: /docs la toma de ahí.
+VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 DEFAULT_TZ = "Europe/Madrid"
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173"]
@@ -1042,7 +1046,7 @@ def create_app(
     sync_off_reason: str = "ingest/config.toml no configurado",
     sync_client_factory: Callable[[dict], Any] = _default_sync_client_factory,
 ) -> FastAPI:
-    app = FastAPI(title="zepp-dashboard API")
+    app = FastAPI(title="zepp-dashboard API", version=VERSION)
     app.state.db_path = Path(db_path) if db_path is not None else DEFAULT_DB_PATH
     app.state.tz = tz
     app.state.api_token = api_token

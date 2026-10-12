@@ -10,6 +10,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 import time
+import tomllib
 from datetime import date, datetime, timedelta
 from datetime import time as dt_time
 from pathlib import Path
@@ -141,6 +142,12 @@ def test_overview_exposes_the_tz_it_groups_days_with(db_path: Path):
     resp = client.get("/api/overview")
     assert resp.status_code == 200
     assert resp.json()["tz"] == "America/New_York"
+
+
+def test_openapi_shows_the_project_version(client: TestClient):
+    """/docs enseña la versión de pyproject.toml, no el 0.1.0 por defecto de FastAPI."""
+    project = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text())
+    assert client.get("/openapi.json").json()["info"]["version"] == project["project"]["version"]
 
 
 def test_overview_empty_day_returns_nulls_not_errors(client: TestClient):

@@ -108,7 +108,7 @@ export function Panel({ range }: TabProps) {
             <p className="text-label uppercase text-ink-muted">
               {daySpan(range.from, range.to)} días · una columna es un día
             </p>
-            <p className="text-xs text-ink-muted">Cada serie lleva su propio mín–máx a la derecha</p>
+            <p className="text-xs text-ink-muted">Cada serie lleva su propio mín–máx a la izquierda</p>
           </div>
 
           <SeriesBoard

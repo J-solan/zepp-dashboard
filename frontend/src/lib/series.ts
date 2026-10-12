@@ -1,6 +1,6 @@
 /** Geometría de las series alineadas del Panel.
  *
- * Devuelven strings de `path` en vez de componentes: los siete carriles
+ * Devuelven strings de `path` en vez de componentes: todos los carriles
  * comparten un solo SVG y un solo eje de tiempo, que es lo que permite leer
  * una columna vertical como "un día entero". Con un contenedor de gráfica por
  * métrica esa alineación no se puede garantizar.
