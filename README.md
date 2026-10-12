@@ -99,7 +99,7 @@ hours old or from another day, so it always ends close to now (a server that is
 already running is not rebuilt). `--reset` throws your edits away. Sync answers
 `"modo demo: sincronización desactivada"`.
 
-![Panel: today against its 30-day band, seven series on one time axis](docs/img/panel.png)
+![Panel: today against its 30-day band, the daily series on one time axis](docs/img/panel.png)
 ![Workouts: a strength session with its Hevy sets over the strap's heart rate](docs/img/entrenos.png)
 ![Muscles: weekly strength volume on the body map](docs/img/musculos.png)
 
@@ -113,7 +113,8 @@ already running is not rebuilt). `--reset` throws your edits away. Sync answers
 - **Stress** — the actual sparse series the app draws, not an internal model
 - **BioCharge** split into `mental` and `physical`, which the official app does
   not separate
-- **Readiness**, HRV, resting HR, respiratory rate, VO2max, training load, steps
+- **Readiness**, HRV, resting HR, respiratory rate, VO2max (if your device
+  reports it), training load, steps
 - **Workouts** with HR overlay, heart-rate zones, load and training effect, plus
   a review queue for auto-detected activities
 - **Strength**, cross-referenced with [Hevy](https://www.hevyapp.com/): exercise,
@@ -124,6 +125,7 @@ already running is not rebuilt). `--reset` throws your edits away. Sync answers
 - **Weekly volume per muscle** on an anatomical body map
 - **Installable on your phone** (PWA) and usable **offline**: the last data you
   saw is there without a connection
+- **Light and dark theme**, following your system or forced from the header
 
 ## Requirements
 

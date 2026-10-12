@@ -101,7 +101,7 @@ más de tres horas o son de otro día, para que siempre terminen cerca de ahora
 (un servidor ya en marcha no se regenera). `--reset` deshace lo que hayas
 tocado. El sync responde `"modo demo: sincronización desactivada"`.
 
-![Panel: el día contra su banda de 30 días, siete series en un mismo eje](docs/img/panel.png)
+![Panel: el día contra su banda de 30 días, las series diarias en un mismo eje](docs/img/panel.png)
 ![Entrenos: una sesión de fuerza con sus series de Hevy sobre la FC del strap](docs/img/entrenos.png)
 ![Músculos: volumen semanal de fuerza sobre la figura anatómica](docs/img/musculos.png)
 
@@ -114,8 +114,8 @@ tocado. El sync responde `"modo demo: sincronización desactivada"`.
   el payload esconde en un bloque aparte que casi nadie lee
 - **Estrés** — la serie dispersa que pinta de verdad la app, no un modelo interno
 - **BioCharge** desglosado en `mental` y `physical`, que la app oficial no separa
-- **Readiness**, HRV, FC en reposo, frecuencia respiratoria, VO2max, carga de
-  entreno, pasos
+- **Readiness**, HRV, FC en reposo, frecuencia respiratoria, VO2max (si tu
+  dispositivo lo da), carga de entreno, pasos
 - **Entrenos** con overlay de FC, zonas de frecuencia, carga y training effect,
   más una cola de revisión para las actividades auto-detectadas
 - **Fuerza**, cruzada con [Hevy](https://www.hevyapp.com/): ejercicio, series,
@@ -125,6 +125,7 @@ tocado. El sync responde `"modo demo: sincronización desactivada"`.
 - **Volumen semanal por músculo** sobre una figura anatómica
 - **Instalable en el móvil** (PWA) y usable **sin conexión**: lo último que
   viste sigue ahí aunque no haya red
+- **Tema claro y oscuro**, según el sistema o forzado desde la cabecera
 
 ## Requisitos
 
