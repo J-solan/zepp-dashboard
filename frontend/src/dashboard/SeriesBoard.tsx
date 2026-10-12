@@ -54,11 +54,15 @@ interface SeriesBoardProps {
   styles?: SportStyles
 }
 
-/** Las siete series del periodo sobre un eje común, más el carril de entrenos.
+/** Las series diarias del periodo sobre un eje común, más el carril de entrenos.
  *
  * Cada carril lleva su propio mín–máx rotulado a la derecha: los ejes están
  * truncados (si no, readiness viviría en el 80 % superior y no se vería nada)
  * y eso hay que declararlo, no esconderlo.
+ *
+ * Un carril sin ningún dato en el rango no se pinta: no todos los dispositivos
+ * miden todo (VO2max llega vacío en muchas cuentas) y una fila vacía fija solo
+ * empuja el resto hacia abajo.
  */
 export function SeriesBoard({ range, daily, sessions, workouts, styles }: SeriesBoardProps) {
   const days = daySpan(range.from, range.to)
@@ -70,15 +74,18 @@ export function SeriesBoard({ range, daily, sessions, workouts, styles }: Series
     const nights = mainSessionPerDay(sessions)
     const sleepScores = daySeries(nights, range.to, (s) => s.score, days).map((d) => d.value)
 
-    return [
+    const all: LaneSpec[] = [
       { label: 'Readiness', color: METRIC.readiness, kind: 'area', values: pick((r) => r.readiness) },
       { label: 'Sueño', color: METRIC.sleep, kind: 'area', values: sleepScores },
       { label: 'HRV', color: METRIC.bio, kind: 'line', values: pick((r) => r.hrv_ms), unit: 'ms' },
       { label: 'FC reposo', color: METRIC.hr, kind: 'line', values: pick((r) => r.resting_hr), unit: 'bpm' },
+      { label: 'Respiración', color: METRIC.resp, kind: 'line', values: pick((r) => r.respiratory_rate), unit: 'rpm' },
+      { label: 'VO2max', color: METRIC.vo2max, kind: 'line', values: pick((r) => r.vo2max) },
       { label: 'Pasos', color: METRIC.steps, kind: 'bars', values: pick((r) => r.steps) },
       { label: 'Carga', color: METRIC.load, kind: 'bars', values: pick((r) => r.train_load), cap: 60 },
       { label: 'Estrés', color: METRIC.stress, kind: 'line', values: pick((r) => r.stress_avg) },
     ]
+    return all.filter((lane) => lane.values.some((v) => v != null))
   }, [daily, sessions, range.to, days])
 
   const axis = useMemo(
@@ -125,9 +132,7 @@ export function SeriesBoard({ range, daily, sessions, workouts, styles }: Series
                 {lane.label}
               </text>
               <text x="0" y={top + 26} fontSize="10" fill="var(--color-ink-muted)" fontFamily="var(--font-mono)">
-                {nums.length > 0
-                  ? `${fmt(Math.min(...nums))} – ${fmt(Math.max(...nums))}${lane.unit ? ` ${lane.unit}` : ''}`
-                  : 'sin datos'}
+                {`${fmt(Math.min(...nums))} – ${fmt(Math.max(...nums))}${lane.unit ? ` ${lane.unit}` : ''}`}
               </text>
 
               {lane.kind === 'area' && (

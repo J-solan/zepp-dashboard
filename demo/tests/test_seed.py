@@ -64,7 +64,7 @@ def test_gaps_are_real_gaps_but_never_in_the_last_week(conn):
     all_days = {_days_ago(i) for i in range(seed.DAYS)}
     last_week = {_days_ago(i) for i in range(7)}
     without_metrics = all_days - {r[0] for r in conn.execute("SELECT day FROM daily_metrics")}
-    without_sleep = all_days - {r[0] for r in conn.execute("SELECT day FROM sleep_session")}
+    without_sleep = all_days - {r[0] for r in conn.execute("SELECT day FROM sleep_session WHERE is_nap = 0")}
     assert len(without_metrics) == 5  # días sin pulsera
     assert len(without_sleep) == 9  # esos 5 + 4 noches con la pulsera cargando
     assert not (without_metrics | without_sleep) & last_week
@@ -75,6 +75,23 @@ def test_bad_week_is_visibly_worse(conn):
     bad = avg("day BETWEEN ? AND ?", _days_ago(20), _days_ago(14))
     rest = avg("day NOT BETWEEN ? AND ?", _days_ago(20), _days_ago(14))
     assert bad < rest - 10
+
+
+def test_naps_look_like_the_real_payload(conn):
+    """Siestas con fases y sin score ni FC en reposo, como llegan de Zepp, y
+    nunca encima de un entreno."""
+    naps = conn.execute("SELECT id, score, resting_hr, start_ts, end_ts FROM sleep_session WHERE is_nap = 1").fetchall()
+    assert len(naps) >= 5
+    assert all(score is None and rhr is None for _, score, rhr, *_ in naps)
+    for nap_id, *_, start, end in naps:
+        assert _one(conn, "SELECT COUNT(*) FROM sleep_stage WHERE session_id = ?", nap_id) > 0
+        assert _one(conn, "SELECT COUNT(*) FROM workout WHERE start_ts < ? AND ? < end_ts", end, start) == 0
+
+
+def test_vo2max_on_every_slept_day(conn):
+    with_vo2 = _one(conn, "SELECT COUNT(*) FROM daily_metrics WHERE vo2max IS NOT NULL")
+    assert with_vo2 > 0
+    assert with_vo2 == _one(conn, "SELECT COUNT(*) FROM daily_metrics WHERE hrv_ms IS NOT NULL")
 
 
 def test_review_queue_has_something_to_review(conn):
@@ -132,7 +149,7 @@ def test_api_serves_every_view(demo_db: Path):
     assert get("/api/hr", week)["series"]
     assert get("/api/stress", week)["series"]
     assert get("/api/biocharge", week)
-    assert len(get("/api/sleep", week)) == 7
+    assert len([s for s in get("/api/sleep", week) if not s["is_nap"]]) == 7  # una noche por día
     assert get("/api/workouts", everything)
     assert get("/api/muscles/volume", everything)["muscles"]
     assert {"fuerza", "voley_playa", "auto_ia"} <= {s["name"] for s in get("/api/sports")}

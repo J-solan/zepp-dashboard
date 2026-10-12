@@ -9,8 +9,8 @@ import { Card } from '../components/Card'
 import type { TabProps } from '../App'
 import { StatCard } from '../components/StatCard'
 import { Hypnogram } from '../components/Hypnogram'
-import { STAGE_COLORS, STAGE_LABELS, mainSessionPerDay } from '../lib/sleep'
-import { formatDuration } from '../lib/format'
+import { STAGE_COLORS, STAGE_LABELS, mainSessionPerDay, napsOf } from '../lib/sleep'
+import { formatClock, formatDuration } from '../lib/format'
 import { formatAxisDay, formatTooltipDay } from '../lib/chartFormat'
 import { CHART, METRIC } from '../lib/palette'
 import type { SleepSession } from '../lib/types'
@@ -38,6 +38,10 @@ export function SleepDetail({ range }: TabProps) {
   const shown = singleDay
     ? latest
     : (mainSessions.find((s) => s.day === pickedDay) ?? latest)
+  // Siestas del día que se está mirando; si en el rango solo hay siestas (sin
+  // noche que elegir), las del último día que tenga alguna.
+  const napDay = shown?.day ?? [...(data ?? [])].reverse().find((s) => s.is_nap)?.day ?? null
+  const naps = napDay ? napsOf(napDay, data ?? []) : []
 
   return (
     <div className="flex flex-col gap-4">
@@ -141,6 +145,29 @@ export function SleepDetail({ range }: TabProps) {
               </div>
             </Card>
           </>
+        )}
+
+        {/* Fuera del bloque de la noche: un día con solo siesta también se ve.
+            Cada siesta con su hipnograma; no entran en el score ni en la
+            tendencia, que son de la noche. */}
+        {napDay && naps.length > 0 && (
+          <Card className="flex flex-col gap-3 p-4">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-label uppercase text-ink-muted">Siestas</p>
+              <p className="text-xs text-ink-secondary">{formatTooltipDay(napDay)}</p>
+            </div>
+            {naps.map((nap) => (
+              <div key={nap.id} className="flex flex-col gap-1.5">
+                <p className="text-xs text-ink-secondary">
+                  <span className="font-mono">
+                    {formatClock(nap.start_ts)}–{formatClock(nap.end_ts)}
+                  </span>{' '}
+                  · {formatDuration((nap.end_ts - nap.start_ts) / 60)}
+                </p>
+                <Hypnogram session={nap} />
+              </div>
+            ))}
+          </Card>
         )}
       </AsyncState>
     </div>

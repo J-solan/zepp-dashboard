@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mainSessionPerDay } from './sleep'
+import { mainSessionPerDay, napsOf } from './sleep'
 import type { SleepSession } from './types'
 
 function session(overrides: Partial<SleepSession>): SleepSession {
@@ -33,5 +33,15 @@ describe('mainSessionPerDay', () => {
   it('un día solo con siestas no aparece', () => {
     const nap = session({ id: 2, day: '2026-08-01', start_ts: 200, end_ts: 500, is_nap: true })
     expect(mainSessionPerDay([nap])).toHaveLength(0)
+  })
+})
+
+describe('napsOf', () => {
+  it('solo las siestas de ese día, por hora de inicio', () => {
+    const night = session({ id: 1, day: '2026-08-01', start_ts: 0, is_nap: false })
+    const late = session({ id: 2, day: '2026-08-01', start_ts: 900, is_nap: true })
+    const early = session({ id: 3, day: '2026-08-01', start_ts: 500, is_nap: true })
+    const otherDay = session({ id: 4, day: '2026-08-02', start_ts: 700, is_nap: true })
+    expect(napsOf('2026-08-01', [late, night, otherDay, early]).map((s) => s.id)).toEqual([3, 2])
   })
 })

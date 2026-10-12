@@ -12,6 +12,12 @@ export const METRIC = {
   /** Carga de entreno. Antes tomaba prestado el color de otra métrica; tiene
    * el suyo desde que se pinta en su propio carril, al lado de las demás. */
   load: 'var(--color-load)',
+  // Respiración y VO2max solo viven en su carril del Panel: reusan tokens ya
+  // validados en claro y oscuro en vez de abrir dos colores nuevos, y ninguno
+  // repite el de los carriles vecinos (azul cielo junto al rojo de FC reposo,
+  // naranja antes del oliva de pasos).
+  resp: 'var(--color-zone-normal)',
+  vo2max: 'var(--color-hr-hard)',
 } as const
 
 export const BIO = {

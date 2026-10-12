@@ -146,12 +146,14 @@ one entry in the `lanes` array, and the shared time axis does the rest.
 
 ```tsx
 // src/dashboard/SeriesBoard.tsx
-{ label: 'VO2max', color: METRIC.bio, kind: 'line', values: pick((r) => r.vo2max) }
+{ label: 'Calorías', color: METRIC.steps, kind: 'bars', values: pick((r) => r.calories) }
 ```
 
 `kind` is `area`, `line` or `bars`; `cap` clips a spiky series and labels the
 peak with its real value. Every lane prints its own min–max on the left, because
-the axes are truncated and that has to be said out loud.
+the axes are truncated and that has to be said out loud. A lane with no data at
+all in the range is not drawn: not every device reports everything (VO2max comes
+back empty on many accounts), and an empty row would only push the rest down.
 
 An **intraday** series (a per-minute chart, not one number a day) is a detail
 instead. Copy `HrDetail.tsx`, take `TabProps`, and register it:

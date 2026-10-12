@@ -30,3 +30,9 @@ export function mainSessionPerDay(sessions: SleepSession[]): SleepSession[] {
   }
   return [...byDay.values()].sort((a, b) => a.start_ts - b.start_ts)
 }
+
+/** Siestas de un día, por hora de inicio. Van aparte del sueño principal: no
+ * tienen score y sumarlas a la noche falsearía su duración y su tendencia. */
+export function napsOf(day: string, sessions: SleepSession[]): SleepSession[] {
+  return sessions.filter((s) => s.is_nap && s.day === day).sort((a, b) => a.start_ts - b.start_ts)
+}

@@ -1,8 +1,8 @@
 import { Hypnogram } from '../components/Hypnogram'
 import { quantiles, type Band } from '../lib/baseline'
-import { formatDuration, formatNumber } from '../lib/format'
+import { formatClock, formatDuration, formatNumber } from '../lib/format'
 import { METRIC } from '../lib/palette'
-import { mainSessionPerDay } from '../lib/sleep'
+import { mainSessionPerDay, napsOf } from '../lib/sleep'
 import type { DailyMetrics, SleepSession } from '../lib/types'
 
 const STRIP_WIDTH = 264
@@ -74,6 +74,7 @@ export function DayRail({ daily, sessions }: DayRailProps) {
   }
 
   const night = nights.find((s) => s.day === last.day) ?? null
+  const naps = napsOf(last.day, sessions)
   const nightMinutes = night ? (night.end_ts - night.start_ts) / 60 : null
 
   const rows: Row[] = [
@@ -145,12 +146,25 @@ export function DayRail({ daily, sessions }: DayRailProps) {
         ))}
       </div>
 
-      {night && (
+      {(night || naps.length > 0) && (
         <div className="border-t border-hairline pt-4">
-          <p className="text-label uppercase text-ink-muted">La noche</p>
-          <div className="mt-2">
-            <Hypnogram session={night} />
-          </div>
+          <p className="text-label uppercase text-ink-muted">{night ? 'La noche' : 'Siestas'}</p>
+          {night && (
+            <div className="mt-2">
+              <Hypnogram session={night} />
+            </div>
+          )}
+          {/* Las siestas van aparte y en una línea: no tienen score y el
+              hipnograma de la noche es el protagonista de este bloque. */}
+          {naps.map((nap) => (
+            <p key={nap.id} className="mt-2 text-xs text-ink-secondary">
+              Siesta ·{' '}
+              <span className="font-mono">
+                {formatClock(nap.start_ts)}–{formatClock(nap.end_ts)}
+              </span>{' '}
+              · {formatDuration((nap.end_ts - nap.start_ts) / 60)}
+            </p>
+          ))}
         </div>
       )}
     </div>

@@ -213,6 +213,29 @@ def build(
     missed = [w for w in workouts if w.code == STRENGTH and w.end <= today_start][-2]
     missed.code, missed.review = AUTO, "pending"
 
+    # --- Siestas ----------------------------------------------------------
+    # Fines de semana y algún día suelto, a media tarde y sin pisar un entreno.
+    # Como en el payload real: fases, pero ni score ni FC en reposo. Azar
+    # aparte (también para el VO2max) para no reordenar el de las noches.
+    extra = random.Random(seed + 1)
+    naps: dict[int, list[tuple[int, int, int]]] = {}
+    for i, d in enumerate(dates):
+        if i in off_days or extra.random() > (0.5 if d.weekday() >= 5 else 0.12):
+            continue
+        start = _local_ts(d, 15, 0, zone) + extra.randint(0, 90) * 60
+        plan = [(4, extra.randint(8, 15)), (5, extra.randint(0, 15)), (4, extra.randint(5, 20))]
+        end = start + sum(mins for _, mins in plan) * 60
+        if any(w.start < end and start < w.end for w in workouts):
+            continue
+        stages, t = [], start
+        for stage, mins in plan:
+            if mins:
+                stages.append((t, t + mins * 60, stage))
+                t += mins * 60
+        naps[i] = stages
+        for b, e, stage in stages:
+            mark(b, e, sleep_stage, stage)
+
     for w in workouts:
         mark(w.start, w.end, effort, w.effort)
 
@@ -299,6 +322,7 @@ def build(
         steps = rng.randint(5500, 11000) - (2500 if i in bad_week else 0)
         hrv = 85 + rng.gauss(0, 9) - (25 if i in bad_week else 0)
         resp = 16.4 + rng.gauss(0, 0.4) + (0.6 if i in bad_week else 0)
+        vo2 = 44 + 2 * i / days + extra.gauss(0, 0.4)  # mejora despacio con el entreno
         noise = rng.gauss(0, 3)
         if i in off_days or until <= bounds[i]:
             continue
@@ -317,6 +341,7 @@ def build(
                 round(hrv) if slept else None,
                 round(resp, 1) if slept else None,
                 round(sum(samples) / len(samples)) if samples else None,
+                round(vo2) if slept else None,
                 load_by_day[i],
                 tz,
             )
@@ -385,6 +410,19 @@ def build(
                 "INSERT INTO sleep_stage (session_id, start_ts, end_ts, stage) VALUES (?,?,?,?)",
                 [(cursor.lastrowid, *s) for s in stages],
             )
+        for i, stages in naps.items():
+            if stages[-1][1] > until:
+                continue
+            minutes = {s: sum((e - b) // 60 for b, e, st in stages if st == s) for s in (4, 5, 7, 8)}
+            cursor = conn.execute(
+                "INSERT INTO sleep_session (day, start_ts, end_ts, score, deep_min, light_min, rem_min, "
+                "awake_min, wake_count, resting_hr, tz, is_nap) VALUES (?,?,?,NULL,?,?,?,?,NULL,NULL,?,1)",
+                (dates[i].isoformat(), stages[0][0], stages[-1][1], minutes[5], minutes[4], minutes[8], minutes[7], tz),
+            )
+            conn.executemany(
+                "INSERT INTO sleep_stage (session_id, start_ts, end_ts, stage) VALUES (?,?,?,?)",
+                [(cursor.lastrowid, *s) for s in stages],
+            )
         conn.executemany(
             "INSERT INTO workout (source, external_id, sport, sport_type, start_ts, end_ts, train_load, te, "
             "avg_hr, max_hr, hr_zones, auto_recognized, review_status, user_sport) "
@@ -393,7 +431,7 @@ def build(
         )
         conn.executemany(
             "INSERT INTO daily_metrics (day, steps, calories, resting_hr, readiness, hrv_ms, "
-            "respiratory_rate, stress_avg, vo2max, train_load, tz) VALUES (?,?,?,?,?,?,?,?,NULL,?,?)",
+            "respiratory_rate, stress_avg, vo2max, train_load, tz) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             daily_rows,
         )
         # Un sync 'ok' cada día, también los días sin pulsera: el sync fue
