@@ -9,7 +9,18 @@
     <!-- viewport-fit=cover + safe-area en el CSS: instalada en iOS la app
          ocupa toda la pantalla y la nav se comería la barra de gestos. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#faf8f4" />
+    <!-- Color de la barra del navegador/PWA = --color-page de cada tema.
+         lib/theme.ts reescribe `media` cuando el tema se fuerza a mano. -->
+    <meta name="theme-color" content="#faf8f4" media="(prefers-color-scheme: light)" data-scheme="light" />
+    <meta name="theme-color" content="#171512" media="(prefers-color-scheme: dark)" data-scheme="dark" />
+    <!-- Tema forzado ANTES del primer pintado (si no, parpadea en claro).
+         Misma clave que lib/theme.ts. -->
+    <script>
+      try {
+        var t = localStorage.getItem('zepp-dashboard:theme')
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t
+      } catch (e) {}
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>Helio</title>

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { RangePicker } from './RangePicker'
+import { ThemeToggle } from './ThemeToggle'
 import type { DateRange, Preset } from '../lib/dateRange'
 
 interface Tab<TId extends string> {
@@ -38,7 +39,10 @@ export function Nav<TId extends string>({
     <header className="sticky top-0 z-10 border-b border-ink bg-page/90 backdrop-blur">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 px-4 py-3">
         <div className="flex items-baseline gap-7">
-          <span className="font-serif text-2xl leading-none tracking-tight">Helio</span>
+          <span className="flex items-baseline gap-2">
+            <span className="font-serif text-2xl leading-none tracking-tight">Helio</span>
+            <ThemeToggle />
+          </span>
           <div className="hidden items-baseline gap-5 sm:flex">
             {tabs.map((tab) => {
               const isActive = tab.id === active

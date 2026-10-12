@@ -177,14 +177,20 @@ Change a colour in one place — `index.css` — and it moves everywhere: card, 
 and detail view stay in sync by construction.
 
 ```css
---color-accent: #b4471f;        /* effort, actions, body-map load scale */
---color-metric-hr: #b4471f;     /* per-metric identity */
---color-stage-deep: #42618c;    /* sleep stages */
+--color-accent: light-dark(#b4471f, #cc5d37);      /* effort, actions, body-map load scale */
+--color-metric-hr: light-dark(#b4471f, #bf4a1e);   /* per-metric identity */
+--color-stage-deep: light-dark(#42618c, #3f6caa);  /* sleep stages */
 ```
 
-The theme is a light one (`color-scheme: light`), so metric colours are dark and
-low-saturation: half a dozen bright hues on a pale background fight each other
-and none of them wins. Fonts are self-hosted through `@fontsource` — a CDN
+Every colour is a `light-dark(light, dark)` pair, so you never change one theme
+and forget the other. `color-scheme` picks the side: by default it follows the
+system, and the button next to the title cycles Auto → Light → Dark (stored per
+browser in `localStorage`; an inline script in `index.html` applies it before the
+first paint so a forced theme does not flash). On light, metric colours are dark
+and low-saturation: half a dozen bright hues on a pale background fight each
+other and none of them wins. On dark, the same hues are lifted and slightly more
+saturated, and series that share a chart (sleep stages, zones, the HR ramp) are
+also separated by lightness so they stay apart under colour blindness. Fonts are self-hosted through `@fontsource` — a CDN
 `<link>` would leave the app without type in exactly the offline case the PWA
 exists for.
 

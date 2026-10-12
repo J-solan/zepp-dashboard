@@ -8,12 +8,17 @@ import { sportColor, sportLabel } from '../lib/workouts'
  *
  * `<input type="color">` SOLO acepta `#rrggbb`: con cualquier otra cosa el
  * navegador no avisa, se queda en negro. Y la paleta de la app son custom
- * properties de `index.css`, así que hay que resolverlas contra el DOM. */
+ * properties de `index.css` con un par claro/oscuro, así que no basta leer el
+ * token: se pinta una sonda con él y se lee el color ya resuelto (`rgb(…)`)
+ * para el tema activo. */
 function toHex(color: string): string {
-  const variable = color.match(/^var\((--[\w-]+)\)$/)
-  if (!variable) return color
-  const value = getComputedStyle(document.documentElement).getPropertyValue(variable[1]).trim()
-  return /^#[0-9a-f]{6}$/i.test(value) ? value : '#888888'
+  if (!color.startsWith('var(')) return color
+  const probe = document.createElement('i')
+  probe.style.color = color
+  document.body.append(probe)
+  const rgb = getComputedStyle(probe).color.match(/\d+/g)
+  probe.remove()
+  return rgb ? '#' + rgb.slice(0, 3).map((n) => Number(n).toString(16).padStart(2, '0')).join('') : '#888888'
 }
 
 /** Gestión de etiquetas: crear una a mano y elegirle color.

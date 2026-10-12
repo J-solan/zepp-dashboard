@@ -37,6 +37,25 @@ export function MoonIcon({ className }: IconProps) {
   )
 }
 
+export function SunIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
+    </svg>
+  )
+}
+
+/** Medio círculo relleno: "lo que diga el sistema". */
+export function ThemeAutoIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 3.5a8.5 8.5 0 0 1 0 17Z" fill="currentColor" />
+    </svg>
+  )
+}
+
 export function BatteryIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className}>
