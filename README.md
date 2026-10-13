@@ -65,7 +65,7 @@ API does not know a web app exists.
 
 | You want | Read | Time |
 |---|---|---|
-| **Just look around** — invented data, no account | [Try it](#try-it-without-an-account) | 2 min |
+| **Just look around** — invented data, no account | [Live demo](https://j-solan.github.io/zepp-dashboard/) or [run it locally](#try-it-without-an-account) | 0–2 min |
 | **Just an API token** for my own account, nothing else | [docs/01-login.md](docs/01-login.md) | 5 min |
 | **The data, in my own database** — Postgres, InfluxDB, CSV, whatever | [docs/02-extract.md](docs/02-extract.md) | 20 min |
 | **The schema and the HTTP API**, I'll build my own interface | [docs/03-database.md](docs/03-database.md) | 30 min |
@@ -86,6 +86,10 @@ uv run python -m ingest.auth                       # -> your app_token
 
 Ninety days of invented data on the real backend and the real web app. No Zepp
 account, no config, and nothing of yours is used.
+
+**In your browser, nothing to install:** [https://j-solan.github.io/zepp-dashboard/](https://j-solan.github.io/zepp-dashboard/). The same backend
+runs there on WebAssembly; the first load is about 9 MB and a few seconds. To run
+it locally instead:
 
 ```bash
 uv sync

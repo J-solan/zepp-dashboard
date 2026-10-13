@@ -62,6 +62,49 @@ uses relative paths and works identically in both modes.
 Serving the frontend from some other origin? Add it to `cors_origins` in
 `ingest/config.toml`.
 
+### In the browser only — the GitHub Pages demo
+
+The [live demo](https://j-solan.github.io/zepp-dashboard/) is this same backend
+running in the visitor's browser: [Pyodide](https://pyodide.org) (CPython built
+for WebAssembly) in a Web Worker, seeded with `demo/seed.py` on every load. There
+is no server, and nothing third-party at runtime: Pyodide and its wheels are
+served from the same site.
+
+- A build with `VITE_DEMO_WASM=1` sends each `fetchJson` call to the Worker
+  instead of the network, covers the boot with a loading screen (about 6 s on a
+  desktop, ~9 MB transferred the first time), registers no service worker and
+  tags the header "demo · datos inventados". Without the variable none of that is
+  in the bundle. `VITE_BASE` sets the path it is served under.
+- `demo/browser.py` is the Worker's entry point (`boot()`, `handle()`), imported
+  only there and by its tests. It runs FastAPI's threadpool calls inline
+  (WebAssembly has no threads) and stubs `httpx` and `cryptography`, which only
+  ever talk to Zepp — sync answers 503, as in `python -m demo`.
+- `demo/web/build.mjs` adds Pyodide (wheels checked against the sha256 in its
+  lock) and the committed Python code (`git archive`, so nothing untracked) to a
+  built `dist`; `demo/web/smoke.mjs` walks the whole API inside Pyodide.
+- `.github/workflows/pages.yml` runs all of it on every `v*` tag and deploys. It
+  needs Pages set to "GitHub Actions" in the repo settings, and `v*` tags allowed
+  in the `github-pages` environment.
+
+To build and check it locally:
+
+```bash
+(cd frontend && VITE_DEMO_WASM=1 VITE_BASE=/zepp-dashboard/ npm run build)
+cd demo/web && npm ci
+node build.mjs ../../frontend/dist        # optional git ref, HEAD by default
+node smoke.mjs ../../frontend/dist
+mkdir -p /tmp/site && cp -r ../../frontend/dist /tmp/site/zepp-dashboard
+python3 -m http.server -d /tmp/site 8080  # -> http://localhost:8080/zepp-dashboard/
+```
+
+That leaves the demo build in `frontend/dist`, which is what `uvicorn` serves:
+run a plain `npm run build` before going back to the normal app.
+
+Pyodide ships its own FastAPI and pydantic, usually a little behind
+`pyproject.toml`; the smoke test is what tells whether they still fit. To update
+it, change the exact `pyodide` version in `demo/web/package.json`, `npm install`,
+and run the build and the smoke test.
+
 ---
 
 ## How the frontend is laid out
