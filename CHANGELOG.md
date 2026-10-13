@@ -4,6 +4,44 @@ Notable changes per release. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Review rules.** `[[review_rules]]` in the config (duration, start time,
+  weekday, month, load, sport code) suggest what a pending session was. The
+  review queue shows each suggestion with an "Aplicar" button, and "Aplicar
+  sugerencias (N)" applies them all. Rules never apply on their own, and a
+  misspelt key stops the API at startup instead of matching everything.
+- **Link a Hevy workout to a strap session by hand**, from the Hevy workout's
+  detail, even a session you had discarded. The session becomes strength, so
+  re-imports keep the link.
+- **Skin temperature** lane in the Panel: the night's deviation from your
+  baseline, in °C.
+- **7-day load** lane with Zepp's optimal range and overreaching line, and each
+  week's state (bajo, óptimo, alto, sobrecarga) in the Season calendar.
+- The demo generates both. For past days, run one sync with
+  `--from <your first day>`.
+
+### Changed
+
+- Light theme: the "normal" blue and the orange of the heart-rate zones are
+  easier to tell from their neighbours, also with colour blindness.
+- The range presets tell screen readers which one is active, and the custom
+  date fields have labels.
+
+### Fixed
+
+- The day's training load never falls back to the 7-day sum when a row lacks
+  the daily value.
+
+### Security
+
+- `config.example.toml` listed the backend keys (`api_token` among them) after
+  `[sport_types]`, so uncommenting them put them inside that table and left the
+  API without a token. `[sport_types]` now comes after them. If your config was
+  copied from the old example, check where `api_token` sits.
+
 ## [0.2.1] - 2026-10-13
 
 ### Added
@@ -106,6 +144,7 @@ Notable changes per release. The format follows
 First public release: ingestion from the Zepp cloud API into SQLite, HTTP API,
 web app (installable PWA) and an offline demo.
 
+[Unreleased]: https://github.com/J-solan/zepp-dashboard/compare/v0.2.1...HEAD
 [0.2.1]: https://github.com/J-solan/zepp-dashboard/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/J-solan/zepp-dashboard/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/J-solan/zepp-dashboard/compare/v0.1.0...v0.1.1
