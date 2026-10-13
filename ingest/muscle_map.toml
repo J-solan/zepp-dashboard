@@ -124,3 +124,29 @@ triceps = 1.0
 
 ["Jalón de tríceps con cuerda"]
 triceps = 1.0
+
+# Hevy renombró algunos ejercicios (export de oct-2026). Las claves viejas de
+# arriba se quedan: un CSV antiguo sigue trayendo el nombre de entonces.
+
+["Elevación Lateral (Mancuerna)"]
+hombro = 1.0
+trapecio = 0.3
+
+["Jalón de Tríceps en Polea"]
+triceps = 1.0
+
+["Remo en T"]
+dorsal = 1.0
+trapecio = 0.5
+biceps = 0.4
+lumbar = 0.3
+
+["Remo Sentado (Máquina)"]
+dorsal = 1.0
+trapecio = 0.6
+biceps = 0.5
+
+["Press de Pecho (Máquina)"]
+pecho = 1.0
+hombro = 0.5
+triceps = 0.5
