@@ -16,8 +16,9 @@ Settings → Export & Import Data):
 - **Las HORAS del CSV no son fiables**, las teclea el usuario al registrar el
   entreno; la FECHA sí. De ahí que el matching con el strap sea por día local y
   que al vincular se adopte la ventana del reloj (ver ``link_to_strap``).
-- **Meses en español** ("16 jul 2026, 14:24") con mapa propio: el locale del
-  sistema no está garantizado en CI ni en la máquina del usuario.
+- **Meses en español o en inglés** ("16 jul 2026, 14:24", "16 Aug 2026, …")
+  con mapa propio: el locale del sistema no está garantizado en CI ni en la
+  máquina del usuario.
 - **Los pesos ya vienen en kg** (columna ``weight_kg``), no hay conversión.
 - **Las series de calentamiento se importan marcadas**, no se descartan:
   ``workout_set.set_type`` guarda el valor verbatim de Hevy ('normal',
@@ -67,12 +68,13 @@ ESSENTIAL_COLUMNS = [
 
 # Mes -> nº, indexado por las 3 primeras letras: cubre tanto la forma
 # abreviada del export ('jul', 'sept') como la larga ('julio', 'septiembre').
+# El export sale en el idioma de la app; en inglés solo cambian 4 meses.
 _MONTHS = {
     name: number
     for number, name in enumerate(
         ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"], 1
     )
-}
+} | {"jan": 1, "apr": 4, "aug": 8, "dec": 12}
 
 
 # ---------------------------------------------------------------------------
@@ -177,9 +179,15 @@ def primary_muscle(muscles: dict[str, float]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _external_id(title: str, start_time: str) -> str:
-    """Hash de title+start_time: el export no trae id de workout y el par
-    (título, inicio) es lo único estable entre dos exports."""
+def _external_id(start_time: str) -> str:
+    """Hash del start_time: el export no trae id de workout y el inicio es lo
+    único estable entre dos exports. El título no entra porque se puede editar
+    en Hevy; si se edita la hora, sí sale como otro workout."""
+    return hashlib.sha256(start_time.encode()).hexdigest()[:16]
+
+
+def _legacy_external_id(title: str, start_time: str) -> str:
+    """El id de antes, que incluía el título (ver ``import_csv``)."""
     return hashlib.sha256(f"{title}|{start_time}".encode()).hexdigest()[:16]
 
 
@@ -198,15 +206,22 @@ def import_csv(
     muscle_map = load_muscle_map() if muscle_map is None else muscle_map
     upsert_exercise_muscle(conn, muscle_map)
 
-    workouts: dict[tuple[str, str], list[dict[str, str]]] = {}
+    workouts: dict[str, list[dict[str, str]]] = {}
     for row in read_rows(csv_path):
-        workouts.setdefault((row["title"], row["start_time"]), []).append(row)
+        workouts.setdefault(row["start_time"], []).append(row)
 
     unmapped: set[str] = set()
     n_sets = 0
 
-    for (title, start_time), rows in workouts.items():
-        external_id = _external_id(title, start_time)
+    for start_time, rows in workouts.items():
+        title = rows[0]["title"]
+        external_id = _external_id(start_time)
+        # Lo importado cuando el id llevaba el título se pasa al id nuevo en
+        # sitio: así no se duplica y conserva su id y lo que editó el usuario.
+        conn.execute(
+            "UPDATE workout SET external_id=? WHERE source='hevy' AND external_id=?",
+            (external_id, _legacy_external_id(title, start_time)),
+        )
         # linked_workout_id se resetea en cada import: lo re-decide el matching
         # de más abajo con los datos que haya ahora en la tabla.
         conn.execute(

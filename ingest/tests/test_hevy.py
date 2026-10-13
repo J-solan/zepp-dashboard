@@ -9,6 +9,7 @@ justo lo que cada caso quiere controlar.
 from __future__ import annotations
 
 import csv
+import hashlib
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -101,6 +102,21 @@ def base_row(**overrides) -> dict:
     ],
 )
 def test_spanish_dates_parse_without_system_locale(text, expected):
+    ts = hevy.parse_hevy_datetime(text, TZ)
+    assert datetime.fromtimestamp(ts, ZoneInfo(TZ)).strftime("%Y-%m-%d %H:%M") == expected
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("16 Jan 2026, 14:24", "2026-01-16 14:24"),
+        ("3 Apr 2026, 09:00", "2026-04-03 09:00"),
+        ("21 aug 2026, 18:10", "2026-08-21 18:10"),
+        ("31 Dec 2026, 18:00", "2026-12-31 18:00"),
+    ],
+)
+def test_english_months_parse_too(text, expected):
+    """Un export con la app en inglés: solo jan/apr/aug/dec difieren del español."""
     ts = hevy.parse_hevy_datetime(text, TZ)
     assert datetime.fromtimestamp(ts, ZoneInfo(TZ)).strftime("%Y-%m-%d %H:%M") == expected
 
@@ -275,6 +291,32 @@ def test_external_id_is_stable_across_imports(conn, export):
     ids = conn.execute("SELECT external_id FROM workout ORDER BY external_id").fetchall()
     hevy.import_csv(conn, export, TZ)
     assert conn.execute("SELECT external_id FROM workout ORDER BY external_id").fetchall() == ids
+
+
+def test_renaming_a_workout_in_hevy_updates_it_instead_of_duplicating(conn, tmp_path):
+    csv_path = write_csv(tmp_path / "in.csv", [base_row(title="Entreno")])
+    hevy.import_csv(conn, csv_path, TZ)
+    (workout_id,) = conn.execute("SELECT id FROM workout").fetchone()
+
+    write_csv(csv_path, [base_row(title="Pierna")])
+    hevy.import_csv(conn, csv_path, TZ)
+
+    assert conn.execute("SELECT id, title FROM workout").fetchall() == [(workout_id, "Pierna")]
+
+
+def test_a_workout_imported_with_the_old_title_based_id_is_kept(conn, tmp_path):
+    """Antes el id era hash(título|inicio): re-importar no debe duplicar lo ya
+    importado, y el workout conserva su id (y lo que el usuario editó en él)."""
+    old_id = hashlib.sha256("Entreno|3 mar 2026, 10:00".encode()).hexdigest()[:16]
+    cur = conn.execute(
+        "INSERT INTO workout (source, external_id, sport, title, start_ts, end_ts, notes) "
+        "VALUES ('hevy', ?, 'fuerza', 'Entreno', 0, 0, 'mi nota')",
+        (old_id,),
+    )
+
+    hevy.import_csv(conn, write_csv(tmp_path / "in.csv", [base_row(title="Entreno")]), TZ)
+
+    assert conn.execute("SELECT id, notes FROM workout").fetchall() == [(cur.lastrowid, "mi nota")]
 
 
 # ---------------------------------------------------------------------------
