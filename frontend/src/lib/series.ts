@@ -96,3 +96,11 @@ export function barsPath(values: Values, x: X, { baseY, height, max, width }: Ba
   })
   return d
 }
+
+/** Índices de los días rotulados en el eje común: primero, medio y último,
+ * sin repetir. Con uno o dos días el "medio" cae en un extremo, y rotular el
+ * mismo día dos o tres veces con anclajes distintos montaba las fechas unas
+ * sobre otras. */
+export function axisDays(days: number): number[] {
+  return [...new Set([0, Math.floor(days / 2), days - 1])]
+}

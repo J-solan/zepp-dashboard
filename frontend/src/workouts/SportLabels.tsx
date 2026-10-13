@@ -48,16 +48,39 @@ export function SportLabels() {
     }
   }
 
+  // Cambiar o quitar un color: un fallo sale en la misma línea que el de
+  // "Crear", en vez de quedarse en una promesa rechazada que no ve nadie.
+  const write = async (request: Promise<void>) => {
+    setError(null)
+    try {
+      await request
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1.5">
         {sports.map((sport) => (
           <div key={sport.name} className="flex items-center gap-2">
+            {/* Sin controlar y escuchando el `change` NATIVO: el `onChange` de
+                React es el evento `input`, que salta en cada paso del arrastre
+                y mandaba un PUT por cada uno. `change` llega una vez, al soltar
+                o cerrar el selector. La `key` lo remonta cuando cambia el color
+                guardado (p. ej. al quitarlo), que si no se quedaría con el
+                último que se eligió a mano. */}
             <input
+              key={sport.color ?? ''}
               type="color"
               aria-label={`Color de ${sportLabel(sport.name)}`}
-              value={toHex(sportColor(sport.name, styles))}
-              onChange={(e) => save(sport.name, e.target.value)}
+              defaultValue={toHex(sportColor(sport.name, styles))}
+              ref={(el) => {
+                if (!el) return
+                const commit = () => write(save(sport.name, el.value))
+                el.addEventListener('change', commit)
+                return () => el.removeEventListener('change', commit)
+              }}
               className="h-7 w-9 shrink-0 cursor-pointer rounded border border-hairline bg-transparent"
             />
             <span
@@ -73,7 +96,7 @@ export function SportLabels() {
                 demás el botón no haría nada visible. */}
             {sport.color && (
               <button
-                onClick={() => remove(sport.name)}
+                onClick={() => write(remove(sport.name))}
                 aria-label={`Quitar el color de ${sportLabel(sport.name)}`}
                 title="Quitar el color"
                 className="shrink-0 rounded-md p-1.5 text-ink-muted hover:bg-raised hover:text-ink

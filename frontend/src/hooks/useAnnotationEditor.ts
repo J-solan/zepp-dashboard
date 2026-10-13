@@ -34,6 +34,9 @@ export function useAnnotationEditor(range: DateRange): AnnotationEditor {
   const [isAnnotating, setIsAnnotating] = useState(false)
   const [pending, setPending] = useState<PendingSpan | null>(null)
   const [saving, setSaving] = useState(false)
+  // Fallo al escribir: sale en la misma línea que el de carga. Sin esto la
+  // promesa rechazada no la miraba nadie y la nota no aparecía sin más.
+  const [writeError, setWriteError] = useState<string | null>(null)
 
   // Cambiar de día con una selección a medias dejaría un tramo que ya no se ve.
   useEffect(() => {
@@ -50,10 +53,13 @@ export function useAnnotationEditor(range: DateRange): AnnotationEditor {
     async (text: string) => {
       if (!pending) return
       setSaving(true)
+      setWriteError(null)
       try {
         await create(pending.from, pending.to, text)
         setPending(null)
         setIsAnnotating(false)
+      } catch (err) {
+        setWriteError(`No se pudo guardar la nota: ${(err as Error).message}`)
       } finally {
         setSaving(false)
       }
@@ -61,16 +67,28 @@ export function useAnnotationEditor(range: DateRange): AnnotationEditor {
     [pending, create],
   )
 
+  const removeNote = useCallback(
+    async (id: number) => {
+      setWriteError(null)
+      try {
+        await remove(id)
+      } catch (err) {
+        setWriteError(`No se pudo borrar la nota: ${(err as Error).message}`)
+      }
+    },
+    [remove],
+  )
+
   return {
     annotations,
-    error,
+    error: writeError ?? error,
     isAnnotating,
     toggle,
     pending,
     select: useCallback((from: number, to: number) => setPending({ from, to }), []),
     cancel: useCallback(() => setPending(null), []),
     save,
-    remove,
+    remove: removeNote,
     saving,
   }
 }

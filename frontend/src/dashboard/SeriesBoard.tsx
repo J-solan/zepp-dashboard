@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { areaPath, barsPath, gapPath, linePath } from '../lib/series'
+import { areaPath, axisDays, barsPath, gapPath, linePath } from '../lib/series'
 import { daySeries } from '../lib/days'
 import { dayOfTs, daySpan } from '../lib/date'
 import { formatAxisDay } from '../lib/chartFormat'
@@ -187,7 +187,7 @@ export function SeriesBoard({ range, daily, sessions, workouts, styles }: Series
         ))}
 
         <rect x={X0} y={eventsTop(lanes.length) + EVENT_H} width={X1 - X0} height="1" fill="var(--color-hairline)" />
-        {[0, Math.floor(days / 2), days - 1].map((i, k) => (
+        {axisDays(days).map((i) => (
           <text
             key={i}
             x={xAt(i, days)}
@@ -195,7 +195,7 @@ export function SeriesBoard({ range, daily, sessions, workouts, styles }: Series
             fontSize="10"
             fill="var(--color-ink-secondary)"
             fontFamily="var(--font-mono)"
-            textAnchor={k === 0 ? 'start' : k === 2 ? 'end' : 'middle'}
+            textAnchor={i === 0 ? 'start' : i === days - 1 ? 'end' : 'middle'}
           >
             {axis[i] ? formatAxisDay(axis[i]) : ''}
           </text>

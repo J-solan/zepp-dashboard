@@ -136,6 +136,19 @@ export function Workouts({ range }: TabProps) {
 
   const totalLoad = shown.reduce((sum, w) => sum + ((w.strap ?? w).train_load ?? 0), 0)
 
+  // Los descartados no se borran, se ocultan. Este interruptor es el único
+  // camino de vuelta: sin él, "ignorar" era irreversible. Por eso sale también
+  // con la lista vacía, que es justo lo que queda si se descartó todo el rango.
+  const ignoredToggle = (
+    <button
+      onClick={() => setShowIgnored((v) => !v)}
+      className="self-start text-xs text-ink-secondary underline-offset-2 hover:text-ink hover:underline
+                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      {showIgnored ? 'Ocultar descartados' : 'Ver descartados'}
+    </button>
+  )
+
   return (
     <div className="flex flex-col gap-5 p-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -219,7 +232,13 @@ export function Workouts({ range }: TabProps) {
           loading={loading && !data}
           error={error}
           isEmpty={days.length === 0}
-          emptyMessage="Sin entrenos en este rango."
+          emptyMessage={
+            <>
+              Sin entrenos en este rango.
+              <br />
+              {ignoredToggle}
+            </>
+          }
           errorPrefix="No se pudieron cargar los entrenos"
           onRetry={refetch}
         >
@@ -271,15 +290,7 @@ export function Workouts({ range }: TabProps) {
                   ))}
                 </div>
 
-                {/* Los descartados no se borran, se ocultan. Este interruptor es
-                    el único camino de vuelta: sin él, "ignorar" era irreversible. */}
-                <button
-                  onClick={() => setShowIgnored((v) => !v)}
-                  className="self-start text-xs text-ink-secondary underline-offset-2 hover:text-ink hover:underline
-                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  {showIgnored ? 'Ocultar descartados' : 'Ver descartados'}
-                </button>
+                {ignoredToggle}
               </section>
 
               <section ref={detailRef} className="flex min-w-0 flex-col gap-4">

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { PRESETS, presetRange, rangeLabel, shiftRange } from '../lib/dateRange'
 import type { DateRange, Preset } from '../lib/dateRange'
 import { todayISO } from '../lib/date'
@@ -19,6 +20,48 @@ const arrowClass =
   'flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-secondary transition-colors duration-150 ' +
   'hover:bg-raised hover:text-ink disabled:pointer-events-none disabled:opacity-30 ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent'
+
+// Suelo de "desde". Al teclear un año el campo pasa por 0002, 0020, 0202…:
+// sin `min` son fechas válidas, y un rango de siglos congelaba la pestaña.
+const MIN_DAY = '2000-01-01'
+
+/** Campo de fecha que solo aplica fechas válidas.
+ *
+ * Vacía (borrada o a medio teclear) o fuera de su `min`/`max`, no se aplica y
+ * se queda el rango anterior: aplicarla mandaba `from=` (422) y la etiqueta
+ * pintaba "Invalid Date". Lo que no vale se queda en un borrador local y no se
+ * le devuelve al campo el valor aplicado a cada tecla, porque eso impedía
+ * teclear un año (pasa por 0002, 0020…). Al salir del campo vuelve la fecha
+ * aplicada. */
+function DateField({ value, min, max, onCommit }: {
+  value: string
+  min?: string
+  max?: string
+  onCommit: (day: string) => void
+}) {
+  // Atado a la fecha aplicada: si cambia por fuera (las flechas), el borrador
+  // viejo deja de valer solo.
+  const [draft, setDraft] = useState<{ base: string; text: string } | null>(null)
+  return (
+    <input
+      type="date"
+      value={draft?.base === value ? draft.text : value}
+      min={min}
+      max={max}
+      onChange={(e) => {
+        const { value: text, validity } = e.target
+        if (text && validity.valid) {
+          setDraft(null)
+          onCommit(text)
+        } else {
+          setDraft({ base: value, text })
+        }
+      }}
+      onBlur={() => setDraft(null)}
+      className="rounded-md border border-hairline bg-raised px-2 py-2"
+    />
+  )
+}
 
 /** Selector de rango estilo Zepp: pestañas de granularidad (Día/Semana/Mes) y
  * un par de flechas que recorren el histórico ventana a ventana. Al cambiar de
@@ -67,21 +110,13 @@ export function RangePicker({ value, activePreset, onChange }: RangePickerProps)
 
       {activePreset === 'custom' && (
         <span className="flex w-full items-center gap-1.5 text-sm text-ink">
-          <input
-            type="date"
-            value={value.from}
-            max={value.to}
-            onChange={(e) => onChange({ ...value, from: e.target.value }, 'custom')}
-            className="rounded-md border border-hairline bg-raised px-2 py-2"
-          />
+          <DateField value={value.from} min={MIN_DAY} max={value.to} onCommit={(from) => onChange({ ...value, from }, 'custom')} />
           <span className="text-ink-muted">–</span>
-          <input
-            type="date"
+          <DateField
             value={value.to}
             min={value.from}
             max={todayISO()}
-            onChange={(e) => onChange({ ...value, to: e.target.value }, 'custom')}
-            className="rounded-md border border-hairline bg-raised px-2 py-2"
+            onCommit={(to) => onChange({ ...value, to }, 'custom')}
           />
         </span>
       )}

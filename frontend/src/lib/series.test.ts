@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { areaPath, barsPath, gapPath, linePath } from './series'
+import { areaPath, axisDays, barsPath, gapPath, linePath } from './series'
 
 // Escala de juguete: un punto cada 10 px y el valor medido desde abajo.
 const x = (i: number) => i * 10
@@ -56,5 +56,17 @@ describe('barsPath', () => {
 
   it('ni los huecos ni los ceros pintan barra', () => {
     expect(barsPath([null, 0, undefined], x, opts)).toBe('')
+  })
+})
+
+describe('axisDays', () => {
+  it('rotula primero, medio y último', () => {
+    expect(axisDays(30)).toEqual([0, 15, 29])
+    expect(axisDays(3)).toEqual([0, 1, 2])
+  })
+
+  it('en rangos de uno o dos días no repite el mismo día', () => {
+    expect(axisDays(1)).toEqual([0])
+    expect(axisDays(2)).toEqual([0, 1])
   })
 })

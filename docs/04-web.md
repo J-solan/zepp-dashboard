@@ -355,7 +355,8 @@ evidence. You classify it or you ignore it.
 Classifying sets `user_sport` on that one workout. It is the per-session escape
 hatch; `[sport_types]` above is the permanent rule.
 
-**Discarding is reversible.** "Ver descartados" under the filters brings them
+**Discarding is reversible.** "Ver descartados", under the workout list (or
+under "Sin entrenos en este rango" when nothing else is left), brings them
 back into the list, dimmed, each with a **Recuperar** button that returns it to
 the queue. Discarding hides a workout; it never destroys one — a watch workout
 could not be destroyed anyway, the next sync would bring it straight back.

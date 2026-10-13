@@ -2,6 +2,7 @@ import { useState, type ComponentType } from 'react'
 import { useApi } from '../hooks/useApi'
 import { useSync } from '../hooks/useSync'
 import { useSports } from '../hooks/useSports'
+import { AsyncState } from '../components/AsyncState'
 import { Button } from '../components/Button'
 import { SyncBanner } from '../components/SyncBanner'
 import { AlertIcon, SpinnerIcon } from '../components/icons'
@@ -51,11 +52,15 @@ export function Panel({ range }: TabProps) {
   const { isSyncing, triggerError, trigger } = useSync()
   const { styles } = useSports()
 
-  const { data: dailyRange } = useApi<DailyMetrics[]>(`/api/daily?from=${range.from}&to=${range.to}`)
-  const { data: dailyBaseline } = useApi<DailyMetrics[]>(`/api/daily?from=${baselineFrom}&to=${today}`)
-  const { data: sleepRange } = useApi<SleepSession[]>(`/api/sleep?from=${range.from}&to=${range.to}`)
-  const { data: sleepBaseline } = useApi<SleepSession[]>(`/api/sleep?from=${baselineFrom}&to=${today}`)
-  const { data: workouts } = useApi<Workout[]>(`/api/workouts?from=${range.from}&to=${range.to}`)
+  const dailyRange = useApi<DailyMetrics[]>(`/api/daily?from=${range.from}&to=${range.to}`)
+  const dailyBaseline = useApi<DailyMetrics[]>(`/api/daily?from=${baselineFrom}&to=${today}`)
+  const sleepRange = useApi<SleepSession[]>(`/api/sleep?from=${range.from}&to=${range.to}`)
+  const sleepBaseline = useApi<SleepSession[]>(`/api/sleep?from=${baselineFrom}&to=${today}`)
+  const workouts = useApi<Workout[]>(`/api/workouts?from=${range.from}&to=${range.to}`)
+  const span = daySpan(range.from, range.to)
+  // El tablero espera a sus cinco series: con una cargando o caída, "Sin datos
+  // todavía" mentía sobre un periodo que sí tiene datos.
+  const series = [dailyRange, dailyBaseline, sleepRange, sleepBaseline, workouts]
 
   if (loading && !overview) {
     return (
@@ -80,7 +85,7 @@ export function Panel({ range }: TabProps) {
 
   if (!overview) return null
 
-  const lastWithData = [...(dailyBaseline ?? [])].reverse().find((d) => d.readiness != null || d.steps != null)
+  const lastWithData = [...(dailyBaseline.data ?? [])].reverse().find((d) => d.readiness != null || d.steps != null)
   const ActiveDetail = DETAILS.find((d) => d.id === detail)?.Component
 
   return (
@@ -92,36 +97,47 @@ export function Panel({ range }: TabProps) {
         lastSync={overview.last_sync}
       />
 
-      <div className="grid gap-8 lg:grid-cols-[300px_1fr]">
-        <section className="flex flex-col gap-4">
-          <div>
-            <p className="text-label uppercase text-ink-muted">Último día con datos</p>
-            <p className="font-serif text-2xl leading-tight">
-              {lastWithData ? formatTooltipDay(lastWithData.day) : 'Sin datos todavía'}
-            </p>
-          </div>
-          <DayRail daily={dailyBaseline ?? []} sessions={sleepBaseline ?? []} />
-        </section>
+      {/* El vacío no es cosa de este bloque: DayRail y "Último día con datos"
+          ya dicen cuándo no hay nada en la ventana. */}
+      <AsyncState
+        loading={series.some((r) => r.loading && !r.data)}
+        error={series.find((r) => r.error)?.error ?? null}
+        isEmpty={false}
+        emptyMessage=""
+        errorPrefix="No se pudieron cargar las series"
+        onRetry={() => series.filter((r) => r.error).forEach((r) => r.refetch())}
+      >
+        <div className="grid gap-8 lg:grid-cols-[300px_1fr]">
+          <section className="flex flex-col gap-4">
+            <div>
+              <p className="text-label uppercase text-ink-muted">Último día con datos</p>
+              <p className="font-serif text-2xl leading-tight">
+                {lastWithData ? formatTooltipDay(lastWithData.day) : 'Sin datos todavía'}
+              </p>
+            </div>
+            <DayRail daily={dailyBaseline.data ?? []} sessions={sleepBaseline.data ?? []} />
+          </section>
 
-        <section className="flex min-w-0 flex-col gap-4">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="text-label uppercase text-ink-muted">
-              {daySpan(range.from, range.to)} días · una columna es un día
-            </p>
-            <p className="text-xs text-ink-muted">Cada serie lleva su propio mín–máx a la izquierda</p>
-          </div>
+          <section className="flex min-w-0 flex-col gap-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-label uppercase text-ink-muted">
+                {span} {span === 1 ? 'día' : 'días'} · una columna es un día
+              </p>
+              <p className="text-xs text-ink-muted">Cada serie lleva su propio mín–máx a la izquierda</p>
+            </div>
 
-          <SeriesBoard
-            range={range}
-            daily={dailyRange ?? []}
-            sessions={sleepRange ?? []}
-            workouts={workouts ?? []}
-            styles={styles}
-          />
+            <SeriesBoard
+              range={range}
+              daily={dailyRange.data ?? []}
+              sessions={sleepRange.data ?? []}
+              workouts={workouts.data ?? []}
+              styles={styles}
+            />
 
-          <Crosses daily={dailyRange ?? []} sessions={sleepRange ?? []} />
-        </section>
-      </div>
+            <Crosses daily={dailyRange.data ?? []} sessions={sleepRange.data ?? []} />
+          </section>
+        </div>
+      </AsyncState>
 
       <section className="flex flex-col gap-3 border-t border-hairline pt-4">
         <div className="flex flex-wrap items-center gap-2">

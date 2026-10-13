@@ -7,7 +7,7 @@ interface AsyncStateProps {
   loading: boolean
   error: string | null
   isEmpty: boolean
-  emptyMessage: string
+  emptyMessage: ReactNode
   errorPrefix: string
   onRetry: () => void
   children: ReactNode
