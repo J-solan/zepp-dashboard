@@ -954,6 +954,12 @@ def test_requires_bearer_token_when_configured(db_path: Path):
         ).status_code
         == 401
     )
+    assert (
+        protected_client.get(
+            "/api/workouts/pending", headers={"Authorization": "Bearer señal".encode("latin-1")}
+        ).status_code
+        == 401
+    )
     resp = protected_client.get(
         "/api/workouts/pending", headers={"Authorization": "Bearer s3cret"}
     )

@@ -22,6 +22,7 @@ Uso:
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 import threading
 import time
@@ -89,7 +90,9 @@ def require_auth(request: Request) -> None:
     if not token:
         return
     scheme, _, value = request.headers.get("authorization", "").partition(" ")
-    if scheme.lower() != "bearer" or value != token:
+    # compare_digest en tiempo constante; en bytes porque con str solo admite ASCII
+    # y una cabecera con otros caracteres daría un 500 en vez de un 401.
+    if scheme.lower() != "bearer" or not secrets.compare_digest(value.encode(), token.encode()):
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
