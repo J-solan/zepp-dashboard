@@ -19,8 +19,18 @@ import type { Overview } from './lib/types'
 // Si no llega (sin red ni copia en caché, 401 sin token, zona desconocida...) se
 // queda la del navegador; el timeout evita una pantalla en blanco indefinida con
 // mala red. Tras guardar el token, TokenGate recarga y esto se repite ya con él.
+//
+// En la compilación demo (VITE_DEMO_WASM=1, la de GitHub Pages) no hay red: el
+// backend es Python en un Worker de esta página. Aquí se espera a que arranque,
+// sin timeout porque tarda lo que tarde la descarga, con su pantalla de carga.
+if (import.meta.env.VITE_DEMO_WASM === '1') {
+  await (await import('./demo/boot')).bootDemo(document.getElementById('root')!)
+}
 try {
-  const { tz } = await fetchJson<Overview>('/api/overview', { signal: AbortSignal.timeout(5000) })
+  const { tz } = await fetchJson<Overview>(
+    '/api/overview',
+    import.meta.env.VITE_DEMO_WASM === '1' ? undefined : { signal: AbortSignal.timeout(5000) },
+  )
   setAppTz(tz)
 } catch {
   // zona del navegador, el valor por defecto de lib/date
@@ -34,8 +44,9 @@ createRoot(document.getElementById('root')!).render(
 
 // Service worker solo en producción: en `npm run dev` se quedaría sirviendo
 // módulos cacheados y romperías el hot-reload preguntándote por qué no se
-// aplica lo que acabas de escribir.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+// aplica lo que acabas de escribir. Tampoco en la demo: su caché de `/api/*`
+// no pinta nada sin servidor y, bajo /zepp-dashboard/, `/sw.js` no es suyo.
+if (import.meta.env.PROD && import.meta.env.VITE_DEMO_WASM !== '1' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {
       // Sin service worker la app funciona igual, solo pierde el offline.

@@ -41,6 +41,15 @@ export function Nav<TId extends string>({
         <div className="flex items-baseline gap-7">
           <span className="flex items-baseline gap-2">
             <span className="font-serif text-2xl leading-none tracking-tight">Helio</span>
+            {/* Solo en la compilación demo (GitHub Pages); en la normal desaparece al compilar. */}
+            {import.meta.env.VITE_DEMO_WASM === '1' && (
+              <span
+                className="text-label uppercase text-accent"
+                title="Corre entera en tu navegador y vuelve a empezar al recargar."
+              >
+                demo · datos inventados
+              </span>
+            )}
             <ThemeToggle />
           </span>
           <div className="hidden items-baseline gap-5 sm:flex">

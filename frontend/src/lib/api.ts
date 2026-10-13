@@ -26,7 +26,13 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   const headers = new Headers(init?.headers)
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const res = await fetch(path, { ...init, headers })
+  // Modo demo: el backend de Python corre en un Worker de este navegador y la
+  // petición va allí en vez de a la red. Fuera de esa compilación la condición
+  // es falsa en tiempo de build y la rama (con el Worker y Pyodide) desaparece.
+  const res =
+    import.meta.env.VITE_DEMO_WASM === '1'
+      ? await (await import('../demo/boot')).wasmFetch(path, { ...init, headers })
+      : await fetch(path, { ...init, headers })
   if (res.status === 401) authRequired.dispatchEvent(new Event('required'))
   return res
 }
