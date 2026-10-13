@@ -66,9 +66,10 @@ for band_day in payload.get("data") or []:
             writer.writerows(samples)
         print(f"{band_day['date_time']}: {len(samples)} HR samples")
 
-    # Sleep: one session + its hypnogram
-    if band_day.get("summary"):
-        session, stages = parsers.parse_sleep(band_day, tz)
+    # Sleep: one session + its hypnogram (None on a day with no night)
+    night = parsers.parse_sleep(band_day, tz) if band_day.get("summary") else None
+    if night:
+        session, stages = night
         print(f"  score {session['score']}, {len(stages)} stages, "
               f"deep {session['deep_min']}min, REM {session['rem_min']}min")
 ```
@@ -82,18 +83,18 @@ your sink.
 ## Every parser, and what it returns
 
 All timestamps are **unix seconds UTC**. All `day` strings are `YYYY-MM-DD` in
-**your configured local timezone**.
+**your configured local timezone**, except in `parse_all_day_stress` (see its row).
 
 | Fetch | Parse | You get |
 |---|---|---|
 | `client.band_data(d, d)` → `["data"][i]` | `parse_hr_minute(band_day, tz)` | `[(ts, bpm), ...]` — one per minute, sentinels dropped |
-| ″ | `parse_sleep(band_day, tz)` | `(session, stages)` — session has `start_ts, end_ts, score, deep_min, light_min, rem_min, awake_min, wake_count, resting_hr, tz`; each stage `{start_ts, end_ts, stage}` with stage 4/5/7/8 = light/deep/awake/REM |
+| ″ | `parse_sleep(band_day, tz)` | `(session, stages)`, or `None` if there was no night (no `slp`, or an empty one) — session has `start_ts, end_ts, score, deep_min, light_min, rem_min, awake_min, wake_count, resting_hr, tz`; each stage `{start_ts, end_ts, stage}` with stage 4/5/7/8 = light/deep/awake/REM; `resting_hr` may be `None` |
 | ″ | `parse_daily_from_band(band_day)` | `{steps, calories}` or `None` |
 | `client.events("Charge", "real_data", …)` | `parse_biocharge(payload)` | `[(ts, total, mental, physical, status), ...]` — `total` may be `None` (sentinel 255) |
 | `client.events("readiness", "watch_score", …)` | `parse_readiness(payload, tz)` | `[{day, readiness, sleepHRV, sleepRHR, extra}, ...]` — one per day, latest revision wins |
 | `client.events("RespiratoryRate", "real_data", …)` | `parse_respiratory(payload)` | `[(ts, rpm), ...]` |
 | `client.events("DailyHealth", "summary", …)` | `parse_daily_health(payload)` | `[{day, steps, calories}, ...]` |
-| `client.events_user("all_day_stress", …)` | `parse_all_day_stress(payload, tz)` | `[{day, start_ts, end_ts, samples, avg_stress}, ...]` — `samples` is `[(ts, 0-100)]`, sparse |
+| `client.events_user("all_day_stress", …)` | `parse_all_day_stress(payload, tz)` | `[{day, start_ts, end_ts, samples, avg_stress}, ...]` — `samples` is `[(ts, 0-100)]`, sparse; `day` is the **UTC** date of the item ([why](zepp-api.md#stress--all_day_stress)) |
 | `client.sport_load(d1, d2)` | `parse_sport_load(payload)` | `[(day, train_load), ...]` |
 | `client.vo2max(d1, d2)` | `parse_vo2max(payload)` | `[(day, vo2max), ...]` |
 | `client.sport_history()` | `parse_sport_history(payload, sport_types)` | `[{trackid, type, end_time, run_time, avg_heart_rate, max_heart_rate, calorie, exercise_load, te, heart_range, auto_recognition, review_status, ...}, ...]` |

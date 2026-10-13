@@ -152,6 +152,11 @@ REM field — derive it by summing `mode == 8` durations.
 The `stage[]` reference day is the midnight of the day **before** the payload's
 `date_time` (a night spans two dates). Validate against `st`/`ed`.
 
+**An empty `slp` is not a night.** Some days carry an `slp` with `st == ed`, no
+`stage[]`, `ss` 0 and `rhr` 0 (seen on a day fetched before the night was
+uploaded). Skip it: stored as a session it is a 0-minute night with a resting
+heart rate of 0. In general, treat `rhr` 0 as "no data".
+
 Also in that blob: `stp` (steps/calories/distance for the day) and `te` (training
 effect), which arrives **×10** — divide by 10.
 
@@ -225,6 +230,10 @@ full day, anchored to **UTC midnight** (`item.timestamp`). Sentinel is **`0`**
 (950–1339 zero bytes a day is normal — it is mostly measured while asleep).
 Observed real values: 14–21.
 
+Items come back by their `timestamp`, so outside UTC a local day spans **two**
+of them: request from the UTC midnight your local day starts in, and keep the
+minutes that fall inside your local day.
+
 `value.timeZone` is `[{period: [start_min, end_min], offset: seconds}]`. It is
 **metadata, not an anchor**: it marks which UTC offset the device was on during
 each measured stretch. Using it as an offset shifts the series by about an hour.
@@ -234,6 +243,13 @@ each measured stretch. Using it as an offset shifts the series by about an hour.
 One item per day. `item.timestamp` is **UTC** midnight of the day covered (an
 exact multiple of 86400000) and every sample falls inside
 `[timestamp, timestamp + 24h)`.
+
+Label each item with that **UTC** date. At any offset from −12 h to +12 h it is
+the local day that owns most of the bucket; the local date of `timestamp` is
+not — west of UTC it is the previous day (Los Angeles: the 24th's bucket starts
+on the 23rd at 17:00). As with respiratory rate, request from the UTC midnight
+your local day starts in, so each bucket is fetched again with the next day and
+is not left half-filled.
 
 `item.data` is a **JSON string** (not an object) of `[{time, value}]`, with `time`
 in **absolute epoch milliseconds**. The samples are **sparse and explicit**: a

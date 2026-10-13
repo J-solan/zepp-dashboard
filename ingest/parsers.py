@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 _HR_SENTINELS = {0, 254}
@@ -79,21 +79,30 @@ def parse_hr_minute(band_day: dict, tz: str) -> list[tuple[int, int]]:
     return result
 
 
-def parse_sleep(band_day: dict, tz: str) -> tuple[dict, list[dict]]:
-    """``summary`` base64 -> JSON, campo ``slp`` -> (session, stages).
+def parse_sleep(band_day: dict, tz: str) -> tuple[dict, list[dict]] | None:
+    """``summary`` base64 -> JSON, campo ``slp`` -> (session, stages), o None.
 
     ``stage[]`` viene en minutos-desde-medianoche local con `stop` inclusivo
     (duración = stop - start + 1), referidos a la medianoche del día ANTERIOR
     a ``date_time`` (verificado empíricamente contra `st`/`ed`, que son unix s
     directos). ``dp``/``lt`` se toman tal cual; `rem_min`/`awake_min` se
     derivan sumando duraciones de mode 8/7 respectivamente.
+
+    None = no hubo noche: sin ``slp`` o con ``ed <= st``. Algunos días llega
+    un ``slp`` hueco (st == ed, ``stage`` vacío, score 0, rhr 0); guardarlo
+    como sesión daba una noche de 0 minutos y un ``resting_hr = 0``. Una noche
+    con duración pero sin fases sí se guarda: es lo que dice la fuente.
+    Las siestas (``odd_stage``) van aparte, en ``parse_naps``: pueden venir en
+    un día sin noche. ``rhr`` 0 tampoco es un dato (0 lpm) -> None.
     """
     zone = ZoneInfo(tz)
     day = date.fromisoformat(band_day["date_time"])
     reference = _local_midnight(day - timedelta(days=1), zone)
 
     summary = json.loads(base64.b64decode(band_day["summary"]))
-    slp = summary["slp"]
+    slp = summary.get("slp") or {}
+    if not slp or slp["ed"] <= slp["st"]:
+        return None
 
     stages: list[dict] = []
     rem_min = 0
@@ -118,7 +127,7 @@ def parse_sleep(band_day: dict, tz: str) -> tuple[dict, list[dict]]:
         "rem_min": rem_min,
         "awake_min": awake_min,
         "wake_count": slp["wc"],
-        "resting_hr": slp["rhr"],
+        "resting_hr": slp["rhr"] or None,
         "tz": tz,
         "is_nap": 0,
     }
@@ -493,10 +502,16 @@ def parse_all_day_stress(events_payload: dict, tz: str) -> list[dict]:
 
     ``item.timestamp`` = medianoche UTC del día cubierto (múltiplo exacto de
     86400000); todas las muestras del item caen en ``[timestamp, timestamp+24h)``
-    (verificado 7/7 días de crudo). El ``day`` se deriva en tz **LOCAL**: ``daily_metrics`` se indexa por día local (igual que
-    ``parse_readiness``), así que ``avg_stress`` debe casar esa convención;
-    ``start_ts``/``end_ts`` en cambio siguen anclados al instante UTC real de
-    las muestras (definen el rango que reemplaza el DELETE de re-ingesta).
+    (verificado 7/7 días de crudo): cada item es un cubo de día UTC. Su ``day``
+    es la fecha UTC de ``timestamp``, en cualquier tz. Para ``daily_metrics``
+    (día local) es el día que se lleva la mayor parte del cubo en cualquier
+    desfase de -12 h a +12 h; con desfase positivo coincide con la fecha local
+    de ese instante. Con desfase negativo no: en Los Ángeles la medianoche UTC
+    del 24 es el 23 a las 17:00, y la fecha local mandaba al 23 un cubo del que
+    solo tiene 7 horas. ``tz`` ya no interviene; se mantiene por la firma
+    pública (docs/02-extract.md). ``start_ts``/``end_ts`` siguen anclados al
+    instante UTC real de las muestras (definen el rango que reemplaza el DELETE
+    de re-ingesta).
 
     **Cruce contra el ground truth de la app (2026-07-24)**: los tramos
     7:30-10:40 y 11:40-11:55 casan EXACTO (valor y huecos, 18/18 filas). El
@@ -505,14 +520,13 @@ def parse_all_day_stress(events_payload: dict, tz: str) -> list[dict]:
     dato (28/28 aplicando ese +5 min a esa banda). Cotejo en vivo final
     PENDIENTE DE USUARIO.
     """
-    zone = ZoneInfo(tz)
     blocks: list[dict] = []
     for item in events_payload.get("items") or []:
         ts_ms = item.get("timestamp")
         if ts_ms is None:
             continue
         start_ts = ts_ms // 1000
-        day = datetime.fromtimestamp(start_ts, zone).date().isoformat()
+        day = datetime.fromtimestamp(start_ts, timezone.utc).date().isoformat()
 
         raw = item.get("data")
         if isinstance(raw, str):

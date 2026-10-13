@@ -258,6 +258,20 @@ def test_window_sources_are_fetched_once_per_run(conn):
     assert client.calls.count("events:RespiratoryRate") == 2
 
 
+def test_sport_history_raw_is_one_row_that_does_not_grow_with_each_synced_day(conn):
+    """El endpoint devuelve el historial ENTERO: fechar su crudo con el último
+    día de la ventana guardaba una copia completa por cada día sincronizado."""
+    # Lo que dejaban las versiones anteriores: una fila fechada por sync.
+    run.store_raw(conn, "sport_history", "2006-07-20", {"old": 1})
+    run.store_raw(conn, "sport_history", "2006-07-21", {"old": 2})
+
+    for day in (FIXTURE_DAY - timedelta(days=1), FIXTURE_DAY, FIXTURE_DAY):
+        run.run_ingest(conn, FakeClient(), [day], CONFIG)
+
+    rows = conn.execute("SELECT day, payload FROM raw_ingest WHERE source = 'sport_history'").fetchall()
+    assert rows == [("latest", json.dumps(_fixture("sport_history.json"), ensure_ascii=False))]
+
+
 # ---------------------------------------------------------------------------
 # Sync incremental (sin él, una ventana de 30 días tardaba minutos)
 # ---------------------------------------------------------------------------
@@ -645,6 +659,25 @@ def test_derivation_does_not_overwrite_hr_present_in_the_payload(conn):
     ).fetchone() == (111, 175)
 
 
+@pytest.mark.parametrize("source", ["manual", "hevy"])
+def test_derived_hr_follows_hr_that_arrives_after_the_first_derivation(conn, source):
+    """Sin FC propia, lo derivado con la ventana a medias (la pulsera aún no
+    había subido toda la FC) no puede quedarse congelado."""
+    start = 1_784_880_000
+    conn.execute(
+        "INSERT INTO workout (source, external_id, start_ts, end_ts) VALUES (?, 'x', ?, ?)",
+        (source, start, start + 600),
+    )
+    run._upsert_hr(conn, [(start, 100), (start + 60, 110)])
+    run.derive_missing_hr(conn)
+    assert conn.execute("SELECT avg_hr, max_hr FROM workout").fetchone() == (105, 110)
+
+    run._upsert_hr(conn, [(start + 120, 150), (start + 180, 160)])
+    run.derive_missing_hr(conn)
+
+    assert conn.execute("SELECT avg_hr, max_hr FROM workout").fetchone() == (130, 160)
+
+
 # ---------------------------------------------------------------------------
 # Unidades de tiempo
 # ---------------------------------------------------------------------------
@@ -706,6 +739,61 @@ def test_nap_regrouping_does_not_orphan_the_absorbed_row(conn):
     assert orphans == 0
 
 
+# ``slp`` sin noche, tal como llega en algunos band_data: st == ed, sin fases,
+# score 0 y rhr 0.
+PHANTOM_SLP = {"st": 1700000000, "ed": 1700000000, "ss": 0, "dp": 0, "lt": 0, "wc": 0, "rhr": 0, "stage": []}
+NIGHT_SLP = {
+    "st": 1700000000, "ed": 1700003000, "ss": 77, "dp": 10, "lt": 20, "wc": 1, "rhr": 50,
+    "stage": [{"start": 0, "stop": 19, "mode": 4}],
+}
+
+
+def band_payload_with_slp(date_time: str, slp: dict) -> dict:
+    return {"data": [{
+        "date_time": date_time,
+        "data_hr": base64.b64encode(b"").decode(),
+        "summary": base64.b64encode(json.dumps({"slp": slp}).encode()).decode(),
+    }]}
+
+
+def test_phantom_night_stores_no_session_nor_zero_resting_hr_but_keeps_the_naps(conn):
+    day = date(2026, 7, 21)
+    slp = {**PHANTOM_SLP, "odd_stage": [{"start": 900, "stop": 930, "mode": 4}]}
+
+    run.process_band_data(conn, band_payload_with_slp(day.isoformat(), slp), day, TZ)
+
+    assert conn.execute("SELECT is_nap FROM sleep_session").fetchall() == [(1,)]
+    assert conn.execute("SELECT COUNT(*) FROM daily_metrics WHERE resting_hr = 0").fetchone()[0] == 0
+
+
+def test_a_phantom_refetch_does_not_delete_a_stored_night(conn):
+    day = date(2026, 7, 21)
+    run.process_band_data(conn, band_payload_with_slp(day.isoformat(), NIGHT_SLP), day, TZ)
+    run.process_band_data(conn, band_payload_with_slp(day.isoformat(), PHANTOM_SLP), day, TZ)
+
+    assert conn.execute("SELECT start_ts FROM sleep_session WHERE is_nap = 0").fetchall() == [
+        (NIGHT_SLP["st"],)
+    ]
+
+
+def test_refetched_night_with_another_start_does_not_orphan_the_old_one(conn):
+    """ON CONFLICT va por (day, start_ts): si un re-fetch trae la noche con otro
+    ``st`` (la buena tras una fantasma, o una parcial corregida), la fila vieja
+    no la toca nadie y se queda como una segunda noche del mismo día."""
+    day = date(2026, 7, 21)
+    run.process_band_data(conn, band_payload_with_slp(day.isoformat(), NIGHT_SLP), day, TZ)
+    moved = {**NIGHT_SLP, "st": NIGHT_SLP["st"] - 600}
+    run.process_band_data(conn, band_payload_with_slp(day.isoformat(), moved), day, TZ)
+
+    assert conn.execute("SELECT start_ts FROM sleep_session WHERE is_nap = 0").fetchall() == [
+        (moved["st"],)
+    ]
+    orphans = conn.execute(
+        "SELECT COUNT(*) FROM sleep_stage WHERE session_id NOT IN (SELECT id FROM sleep_session)"
+    ).fetchone()[0]
+    assert orphans == 0
+
+
 # ---------------------------------------------------------------------------
 # daily_metrics: varias fuentes escribiendo columnas distintas de la misma fila
 # ---------------------------------------------------------------------------
@@ -748,6 +836,55 @@ def test_respiratory_rate_is_the_daily_median(conn):
     assert conn.execute(
         "SELECT respiratory_rate FROM daily_metrics WHERE day = ?", (FIXTURE_DAY.isoformat(),)
     ).fetchone()[0] == 17.0
+
+
+# Zonas lejos de UTC por ambos lados, y la del único usuario real.
+FAR_TZS = ["America/Los_Angeles", "Europe/Madrid", "Asia/Tokyo", "Pacific/Auckland"]
+
+
+def _utc_days_touched(day: date, tz: str) -> list[date]:
+    """Días UTC que pisa el día local ``day`` (dos, salvo en UTC)."""
+    start_ms, end_ms = run._day_bounds_ms(day, tz)
+    first = datetime.fromtimestamp(start_ms / 1000, timezone.utc).date()
+    last = datetime.fromtimestamp(end_ms / 1000 - 1, timezone.utc).date()
+    return [first + timedelta(days=i) for i in range((last - first).days + 1)]
+
+
+@pytest.mark.parametrize("tz", FAR_TZS)
+def test_respiratory_fetch_asks_for_every_utc_item_the_local_day_touches(tz):
+    """Un item por día UTC (``timestamp`` = su medianoche UTC): pedir solo el
+    día local deja fuera el item donde empieza (o acaba) ese día."""
+    client = FakeClient()
+    day = date(2026, 7, 21)
+
+    run.fetch_respiratory(client, day, tz)
+
+    from_ms, to_ms = client.event_windows[("RespiratoryRate", "real_data")]
+    for utc_day in _utc_days_touched(day, tz):
+        assert from_ms <= _utc_midnight_ts(utc_day) * 1000 < to_ms, utc_day
+
+
+@pytest.mark.parametrize("tz", FAR_TZS)
+def test_respiratory_median_lands_on_its_local_day_and_nowhere_else(conn, tz):
+    """Cada minuto vale 10/15/20 según caiga en el día local anterior, el
+    propio o el siguiente: la mediana del día es 15 y los vecinos no se tocan
+    (el fetch de un día no puede pisarlos con una mediana parcial)."""
+    day = date(2026, 7, 21)
+    zone = ZoneInfo(tz)
+    rpm_by_local_day = {day - timedelta(days=1): 10, day: 15, day + timedelta(days=1): 20}
+    items = []
+    for utc_day in _utc_days_touched(day, tz):
+        start = _utc_midnight_ts(utc_day)
+        rpms = bytes(
+            rpm_by_local_day[datetime.fromtimestamp(start + m * 60, zone).date()] for m in range(1440)
+        )
+        items.append({"timestamp": start * 1000, "value": {"measurements": base64.b64encode(rpms).decode()}})
+
+    run.process_respiratory(conn, {"items": items}, day, tz)
+
+    assert conn.execute("SELECT day, respiratory_rate FROM daily_metrics").fetchall() == [
+        (day.isoformat(), 15.0)
+    ]
 
 
 def test_respiratory_intraday_series_is_not_persisted_but_raw_is_kept(conn):
@@ -795,6 +932,17 @@ def test_readiness_resting_hr_wins_over_band_data_when_present(conn):
     assert conn.execute(
         "SELECT resting_hr FROM daily_metrics WHERE day = ?", (FIXTURE_DAY.isoformat(),)
     ).fetchone()[0] == 48
+
+
+def test_readiness_resting_hr_zero_does_not_clobber_band_data(conn):
+    """0 lpm es un centinela, no un valor: no pisa el de band_data."""
+    client = FakeClient(readiness=readiness_payload(FIXTURE_DAY, rdns=70, hrv=65, rhr=0))
+
+    run.run_ingest(conn, client, [FIXTURE_DAY], CONFIG)
+
+    assert conn.execute(
+        "SELECT resting_hr FROM daily_metrics WHERE day = ?", (FIXTURE_DAY.isoformat(),)
+    ).fetchone()[0] == 59
 
 
 def test_readiness_with_no_items_does_not_touch_daily_metrics(conn):
@@ -852,13 +1000,15 @@ def test_stress_sample_ingest_is_idempotent(conn):
     assert conn.execute("SELECT COUNT(*) FROM stress_sample").fetchone()[0] == 1
 
 
-def test_stress_requests_the_day_window(conn):
-    """all_day_stress no tiene el desfase del blob: se pide el propio día."""
+def test_stress_requests_the_day_window_from_its_utc_midnight(conn):
+    """all_day_stress no tiene el desfase del blob: se pide el propio día, desde
+    la medianoche UTC en la que empieza para traer los dos items que pisa."""
     client = FakeClient(stress=all_day_stress_payload(FIXTURE_DAY, {0: 32}))
 
     run.run_ingest(conn, client, [FIXTURE_DAY], CONFIG)
 
-    assert client.event_windows[("all_day_stress", None)] == run._day_bounds_ms(FIXTURE_DAY, TZ)
+    from_ms, to_ms = run._day_bounds_ms(FIXTURE_DAY, TZ)
+    assert client.event_windows[("all_day_stress", None)] == (from_ms - from_ms % 86_400_000, to_ms)
 
 
 def test_stress_reingest_replaces_the_whole_day(conn):
@@ -965,6 +1115,60 @@ def test_migration_002_makes_duplicates_impossible_afterwards(tmp_path):
             c.execute(
                 "INSERT INTO raw_ingest (source, day, fetched_at, payload) VALUES ('s','2026-07-20',2,'{}')"
             )
+
+
+def test_migration_009_cleans_phantom_nights_and_zero_resting_hr(tmp_path):
+    before_009 = tmp_path / "migrations_008"
+    before_009.mkdir()
+    for path in MIGRATIONS_DIR.glob("*.sql"):
+        if path.name < "009":
+            (before_009 / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    db_path = tmp_path / "legacy.db"
+    db.init_db(db_path, before_009)
+
+    # (day, start_ts, end_ts, resting_hr, is_nap, nº de fases)
+    sessions = [
+        ("2026-07-20", 1000, 1000, 0, 0, 0),  # fantasma: st == ed, sin fases
+        ("2026-07-21", 2000, 1500, 0, 0, 1),  # ed < st (con una fase colgando)
+        ("2026-07-22", 3000, 9000, 52, 0, 2),  # noche buena
+        ("2026-07-23", 4000, 9000, 0, 0, 1),  # noche buena con rhr 0
+        ("2026-07-24", 5000, 9000, 50, 0, 0),  # sin fases pero con duración: se queda
+        ("2026-07-24", 6000, 7000, None, 1, 1),  # siesta
+    ]
+    with sqlite3.connect(db_path) as c:
+        for day, start, end, rhr, is_nap, n_stages in sessions:
+            session_id = c.execute(
+                "INSERT INTO sleep_session (day, start_ts, end_ts, resting_hr, is_nap) VALUES (?,?,?,?,?)",
+                (day, start, end, rhr, is_nap),
+            ).lastrowid
+            c.executemany(
+                "INSERT INTO sleep_stage (session_id, start_ts, end_ts, stage) VALUES (?,?,?,4)",
+                [(session_id, start, start + 60)] * n_stages,
+            )
+        c.executemany(
+            "INSERT INTO daily_metrics (day, resting_hr) VALUES (?,?)",
+            [("2026-07-20", 0), ("2026-07-22", 52)],
+        )
+
+    assert "009" in db.init_db(db_path)
+
+    with sqlite3.connect(db_path) as c:
+        assert c.execute(
+            "SELECT day, start_ts, resting_hr, is_nap FROM sleep_session ORDER BY start_ts"
+        ).fetchall() == [
+            ("2026-07-22", 3000, 52, 0),
+            ("2026-07-23", 4000, None, 0),
+            ("2026-07-24", 5000, 50, 0),
+            ("2026-07-24", 6000, None, 1),
+        ]
+        assert c.execute("SELECT COUNT(*) FROM sleep_stage").fetchone()[0] == 4
+        assert c.execute(
+            "SELECT COUNT(*) FROM sleep_stage WHERE session_id NOT IN (SELECT id FROM sleep_session)"
+        ).fetchone()[0] == 0
+        assert c.execute("SELECT day, resting_hr FROM daily_metrics ORDER BY day").fetchall() == [
+            ("2026-07-20", None),
+            ("2026-07-22", 52),
+        ]
 
 
 def test_store_raw_still_replaces_under_the_unique_index(conn):

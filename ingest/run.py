@@ -26,7 +26,7 @@ import sqlite3
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from statistics import median
 from typing import Any
@@ -171,20 +171,30 @@ def _upsert_sleep(conn: sqlite3.Connection, day: str, session: dict, stages: lis
     )
 
 
-def _reconcile_naps(conn: sqlite3.Connection, day: str, naps: list[tuple[dict, list[dict]]]) -> None:
-    """Borra las siestas del día que ya no aparecen en ``naps``.
+def _reconcile_sleep(
+    conn: sqlite3.Connection,
+    day: str,
+    night: tuple[dict, list[dict]] | None,
+    naps: list[tuple[dict, list[dict]]],
+) -> None:
+    """Borra las sesiones del día (noche y siestas) que ya no aparecen en el payload.
 
     Los tramos ``odd_stage`` se reagrupan por contigüidad en cada corrida: si
     un re-fetch (hoy/ayer) rellena el hueco entre dos siestas, se fusionan en
     una sola con el ``start_ts`` de la primera. La fila vieja de la siesta
     absorbida tenía otro ``start_ts``, así que ON CONFLICT no la toca y
-    quedaría huérfana para siempre si no se borra aquí.
+    quedaría huérfana para siempre si no se borra aquí. A la noche le pasa lo
+    mismo si un re-fetch la trae con otro ``st``. Sin noche en el payload
+    (``None``) la guardada no se toca: un ``slp`` hueco no borra una noche buena.
     """
     kept_starts = {nap["start_ts"] for nap, _ in naps}
+    if night:
+        kept_starts.add(night[0]["start_ts"])
     stale = [
         row[0]
         for row in conn.execute(
-            "SELECT id, start_ts FROM sleep_session WHERE day = ? AND is_nap = 1", (day,)
+            "SELECT id, start_ts FROM sleep_session WHERE day = ? AND (is_nap = 1 OR ?)",
+            (day, night is not None),
         ).fetchall()
         if row[1] not in kept_starts
     ]
@@ -261,25 +271,43 @@ def _upsert_workouts(conn: sqlite3.Connection, workouts: list[dict], sport_types
         )
 
 
+# Fuentes sin FC propia. Ni la API ni la web dejan fijar avg_hr/max_hr a mano,
+# así que lo que tengan ahí lo escribió derive_missing_hr.
+_NO_OWN_HR_SOURCES = ("manual", "hevy")
+
+
 def derive_missing_hr(conn: sqlite3.Connection) -> int:
-    """avg_hr/max_hr NULL → derivados de hr_minute en [start_ts, end_ts]."""
+    """avg_hr/max_hr → derivados de hr_minute en [start_ts, end_ts].
+
+    Zepp: solo se rellena lo que su payload trae a NULL (``COALESCE``), nunca
+    se pisa su FC; y como ``_upsert_workouts`` repone el valor de la fuente en
+    cada sync, lo derivado ya se rehace solo.
+
+    ``_NO_OWN_HR_SOURCES`` se recalcula SIEMPRE: con ``COALESCE``, un entreno
+    derivado cuando la pulsera aún no había subido toda su ventana se quedaba
+    con esa FC parcial para siempre (y un Hevy, con la de su ventana del CSV
+    tras vincularse al strap). Es seguro porque todo lo que hay ahí es derivado,
+    y barato: un rango sobre la PK de hr_minute por entreno.
+    """
     rows = conn.execute(
-        "SELECT id, start_ts, end_ts FROM workout "
-        "WHERE (avg_hr IS NULL OR max_hr IS NULL) AND start_ts IS NOT NULL AND end_ts IS NOT NULL"
+        "SELECT id, source, start_ts, end_ts FROM workout "
+        "WHERE (avg_hr IS NULL OR max_hr IS NULL OR source IN (?, ?)) "
+        "AND start_ts IS NOT NULL AND end_ts IS NOT NULL",
+        _NO_OWN_HR_SOURCES,
     ).fetchall()
     derived = 0
-    for workout_id, start_ts, end_ts in rows:
+    for workout_id, source, start_ts, end_ts in rows:
         avg_bpm, max_bpm, samples = conn.execute(
             "SELECT AVG(bpm), MAX(bpm), COUNT(*) FROM hr_minute WHERE ts BETWEEN ? AND ?",
             (start_ts, end_ts),
         ).fetchone()
         if not samples:
             continue
-        conn.execute(
-            "UPDATE workout SET avg_hr = COALESCE(avg_hr, ?), max_hr = COALESCE(max_hr, ?) "
-            "WHERE id = ?",
-            (round(avg_bpm), max_bpm, workout_id),
-        )
+        if source in _NO_OWN_HR_SOURCES:
+            sql = "UPDATE workout SET avg_hr = ?, max_hr = ? WHERE id = ?"
+        else:
+            sql = "UPDATE workout SET avg_hr = COALESCE(avg_hr, ?), max_hr = COALESCE(max_hr, ?) WHERE id = ?"
+        conn.execute(sql, (round(avg_bpm), max_bpm, workout_id))
         derived += 1
     conn.commit()
     return derived
@@ -294,6 +322,18 @@ def _day_bounds_ms(day: date, tz: str) -> tuple[int, int]:
     """Día local completo → (inicio_ms, fin_ms) unix UTC."""
     start = datetime(day.year, day.month, day.day, tzinfo=ZoneInfo(tz))
     return int(start.timestamp() * 1000), int((start + timedelta(days=1)).timestamp() * 1000)
+
+
+def _utc_items_bounds_ms(day: date, tz: str) -> tuple[int, int]:
+    """Como ``_day_bounds_ms``, pero desde la medianoche UTC en la que empieza el día.
+
+    Para endpoints que trocean en items de día UTC (``timestamp`` = medianoche
+    UTC): solo devuelven los items cuyo ``timestamp`` cae en la ventana, y un
+    día local pisa dos de ellos salvo en UTC; con la ventana del día local a
+    secas faltaría el item donde empieza (o acaba) el día.
+    """
+    from_ms, to_ms = _day_bounds_ms(day, tz)
+    return from_ms - from_ms % 86_400_000, to_ms
 
 
 # Cada fuente por día se parte en FETCH (solo red, se paraleliza) y PROCESS
@@ -320,13 +360,17 @@ def process_band_data(conn: sqlite3.Connection, payload: Any, day: date, tz: str
         # Un día sin sueño registrado (pulsera quitada) trae summary sin 'slp':
         # no es un error, simplemente no hay sesión que guardar.
         if json.loads(base64.b64decode(summary_raw)).get("slp"):
-            session, stages = parsers.parse_sleep(band_day, tz)
-            _upsert_sleep(conn, band_date, session, stages)
-            _upsert_daily(conn, band_date, tz=tz, resting_hr=session["resting_hr"])
+            # Un ``slp`` sin noche real llega como None (ver parsers.parse_sleep).
+            night = parsers.parse_sleep(band_day, tz)
             # Siestas (``odd_stage``): filas propias de sleep_session marcadas
             # con is_nap, que el esquema ya admitía por UNIQUE(day, start_ts).
             naps = parsers.parse_naps(band_day, tz)
-            _reconcile_naps(conn, band_date, naps)
+            _reconcile_sleep(conn, band_date, night, naps)
+            if night:
+                session, stages = night
+                _upsert_sleep(conn, band_date, session, stages)
+                if session["resting_hr"] is not None:
+                    _upsert_daily(conn, band_date, tz=tz, resting_hr=session["resting_hr"])
             for nap, nap_stages in naps:
                 _upsert_sleep(conn, band_date, nap, nap_stages)
 
@@ -366,7 +410,7 @@ def process_readiness(conn: sqlite3.Connection, payload: Any, day: date, tz: str
             fields["readiness"] = entry["readiness"]
         if entry["sleepHRV"] is not None:
             fields["hrv_ms"] = entry["sleepHRV"]
-        if entry["sleepRHR"] is not None:
+        if entry["sleepRHR"]:  # 0 lpm es centinela, no un dato: no pisa el de band_data
             fields["resting_hr"] = entry["sleepRHR"]
         if fields:
             _upsert_daily(conn, entry["day"], **fields)
@@ -390,8 +434,11 @@ def process_hrv(conn: sqlite3.Connection, payload: Any, day: date, tz: str) -> N
 
 
 def fetch_stress(client: Any, day: date, tz: str) -> Any:
-    from_ms, to_ms = _day_bounds_ms(day, tz)
-    return client.events_user("all_day_stress", from_ms, to_ms)
+    # Items de día UTC, como el respiratorio. Con la ventana ampliada cada item
+    # se vuelve a pedir con el día siguiente, y el último fetch de un día ya no
+    # lo deja a medias (p. ej. un sync a las 00:30 en Madrid cerraba el día con
+    # el item de su UTC aún abierto).
+    return client.events_user("all_day_stress", *_utc_items_bounds_ms(day, tz))
 
 
 def process_stress(conn: sqlite3.Connection, payload: Any, day: date, tz: str) -> None:
@@ -433,25 +480,25 @@ def process_biocharge(conn: sqlite3.Connection, payload: Any, day: date, tz: str
 
 
 def fetch_respiratory(client: Any, day: date, tz: str) -> Any:
-    from_ms, to_ms = _day_bounds_ms(day, tz)
-    return client.events("RespiratoryRate", "real_data", from_ms, to_ms)
+    return client.events("RespiratoryRate", "real_data", *_utc_items_bounds_ms(day, tz))
 
 
 def process_respiratory(conn: sqlite3.Connection, payload: Any, day: date, tz: str) -> None:
     """events RespiratoryRate/real_data → daily_metrics.respiratory_rate (mediana).
 
     La serie intradía NO se persiste todavía (no hay tabla): el crudo queda en
-    ``raw_ingest`` para reprocesarla cuando la haya. Se agrega por día UTC, que
-    es como el propio payload trocea los items (índice 0 = medianoche UTC) y
-    coincide con el ``dateString`` de DailyHealth.
+    ``raw_ingest`` para reprocesarla cuando la haya. La mediana es la del día
+    LOCAL ``day``, como el resto de ``daily_metrics``, y solo se escribe ese
+    día. Agruparla por día UTC (como trocea el payload) la ponía en el día
+    equivocado lejos de UTC, y el fetch de un día reescribía los vecinos con
+    medianas parciales.
     """
     store_raw(conn, "respiratory", day.isoformat(), payload)
 
-    by_day: dict[str, list[int]] = {}
-    for ts, rpm in parsers.parse_respiratory(payload):
-        by_day.setdefault(datetime.fromtimestamp(ts, timezone.utc).date().isoformat(), []).append(rpm)
-    for day_key, samples in by_day.items():
-        _upsert_daily(conn, day_key, respiratory_rate=median(samples))
+    from_ms, to_ms = _day_bounds_ms(day, tz)
+    samples = [rpm for ts, rpm in parsers.parse_respiratory(payload) if from_ms <= ts * 1000 < to_ms]
+    if samples:
+        _upsert_daily(conn, day.isoformat(), respiratory_rate=median(samples))
     conn.commit()
 
 
@@ -497,7 +544,12 @@ def ingest_sport_history(
     """sport_history → workout. El endpoint NO filtra por día: un fetch por ejecución."""
     sport_types = config.get("sport_types") or {}
     payload = client.sport_history()
-    store_raw(conn, "sport_history", days[-1].isoformat(), payload)
+    # Es el historial ENTERO, no un día: una sola fila con clave fija. Fechada
+    # con el último día de la ventana, cada día sincronizado dejaba otra copia
+    # completa. 'latest' y no NULL: store_raw reemplaza por ``day = ?`` y
+    # ``NULL = NULL`` no casa nunca. El DELETE barre las filas fechadas de antes.
+    conn.execute("DELETE FROM raw_ingest WHERE source = 'sport_history'")
+    store_raw(conn, "sport_history", "latest", payload)
     _upsert_workouts(conn, parsers.parse_sport_history(payload, sport_types), sport_types)
     conn.commit()
 

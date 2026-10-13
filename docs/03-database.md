@@ -52,10 +52,11 @@ desde …`; days already complete in that stretch are skipped. An explicit
 ### Migrations
 
 `db/migrations/NNN_*.sql` applied in numeric order, tracked in a
-`schema_migrations` table. Adding one: drop in `006_your_change.sql` and run
+`schema_migrations` table. Adding one: drop in a file numbered after the last
+one in `db/migrations/` (`NNN_your_change.sql`) and run
 `uv run python -m ingest.db`. Already-applied files are never re-run, so **never
-edit a migration that has shipped** — the number is the key, and a second `006`
-would be considered already applied and silently skipped.
+edit a migration that has shipped** — the number is the key, and a second file
+with a number already in use would be considered applied and silently skipped.
 
 ---
 
@@ -68,7 +69,7 @@ Two time conventions, and mixing them up is the classic bug here:
 
 | Table | Contents |
 |---|---|
-| `raw_ingest` | The untouched JSON, latest per `(source, day)`. Your escape hatch when a parser turns out wrong |
+| `raw_ingest` | The untouched JSON, latest per `(source, day)`. `sport_history` is the whole history, not a day: one row with `day = 'latest'`. Your escape hatch when a parser turns out wrong |
 | `hr_minute` | `(ts, bpm)` — one row per minute. Sentinels already dropped, so gaps are real gaps |
 | `stress_sample` | `(ts, value)` — 0-100, sparse by nature |
 | `biocharge` | `(ts, total, mental, physical, status)`. `total` may be `NULL` (sentinel 255) while the others are valid |

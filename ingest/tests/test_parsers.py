@@ -11,6 +11,8 @@ import json
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from ingest import parsers
 
 TZ = "Europe/Madrid"
@@ -125,6 +127,28 @@ def test_parse_sleep_stage_start_stop_are_inclusive_minutes_converted_to_utc():
     rem = stages[2]
     assert rem["stage"] == 8
     assert rem["end_ts"] - rem["start_ts"] == 4 * 60
+
+
+@pytest.mark.parametrize(
+    "summary_obj",
+    [
+        {"slp": _slp(ed=1700000000, ss=0, dp=0, lt=0, wc=0, rhr=0, stage=[])},
+        {"slp": _slp(ed=1700000000)},
+        {"slp": _slp(ed=1699999000)},
+        {},
+    ],
+    ids=["fantasma", "ed-igual-st", "ed-antes-st", "sin-slp"],
+)
+def test_parse_sleep_without_a_real_night_returns_none(summary_obj):
+    """Algunos días el resumen trae un ``slp`` hueco (st == ed, sin fases,
+    score 0, rhr 0): no es una noche de 0 minutos, es que no hubo noche."""
+    assert parsers.parse_sleep(_band_day("2026-07-21", summary_obj=summary_obj), TZ) is None
+
+
+def test_parse_sleep_resting_hr_zero_is_no_data():
+    """0 lpm es el centinela de "sin dato", no una frecuencia."""
+    session, _ = parsers.parse_sleep(_band_day("2026-07-21", summary_obj={"slp": _slp(rhr=0)}), TZ)
+    assert session["resting_hr"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -572,17 +596,20 @@ def test_parse_all_day_stress_exposes_the_day_aggregate():
     assert block["end_ts"] == ts0 // 1000 + 86400
 
 
-def test_parse_all_day_stress_day_uses_local_tz_not_utc():
-    """``daily_metrics`` se indexa por día LOCAL (patrón
-    ``parse_readiness``/``todayISO``). ``item.timestamp`` es medianoche UTC; en
-    un tz de offset negativo ese instante cae el día anterior, y el ``day`` debe
-    reflejar el LOCAL, no el UTC."""
+@pytest.mark.parametrize(
+    "tz", ["America/Los_Angeles", "America/New_York", "Europe/Madrid", "Asia/Tokyo", "Pacific/Auckland"]
+)
+def test_parse_all_day_stress_day_is_the_date_of_the_utc_bucket(tz):
+    """El item es un cubo de día UTC: ``timestamp`` es su medianoche UTC y las
+    muestras caen en ``[timestamp, timestamp + 24h)``. Su ``day`` es esa fecha
+    en cualquier tz. Tomar la fecha LOCAL de ese instante lo mandaba al día
+    anterior con desfase negativo: en Los Ángeles el cubo del 24 va del 23 a
+    las 17:00 al 24 a las 17:00, y acababa en el 23, del que solo tiene 7 h."""
     ts0 = 1784851200000  # medianoche UTC del 2026-07-24
     payload = {"items": [_all_day_item(ts0, [(ts0, 40)], avgStress="30")]}
 
-    # America/New_York (UTC-4 en verano): ese instante es 2026-07-23 20:00 local.
-    block = parsers.parse_all_day_stress(payload, "America/New_York")[0]
-    assert block["day"] == "2026-07-23"
+    block = parsers.parse_all_day_stress(payload, tz)[0]
+    assert block["day"] == "2026-07-24"
     # el rango del DELETE sigue anclado al instante real de las muestras (UTC).
     assert block["start_ts"] == ts0 // 1000
 
