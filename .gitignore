@@ -5,7 +5,7 @@ data/
 # Secretos y config con credenciales
 .env
 ingest/config.toml
-*token*
+data/app_token.json
 
 # Payloads reales de salud (no se commitean nunca)
 ingest/tests/fixtures_local/
@@ -19,4 +19,3 @@ node_modules/
 
 # Configuración local de herramientas de desarrollo
 .claude/
-CLAUDE.md
