@@ -4,7 +4,13 @@ Notable changes per release. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.1] - 2026-10-13
+
+### Added
+
+- Muscle map entries for five more Hevy exercises, including the new names Hevy
+  now exports for some that were already mapped (the old names stay, so older
+  CSVs still import).
 
 ### Fixed
 
@@ -100,7 +106,7 @@ Notable changes per release. The format follows
 First public release: ingestion from the Zepp cloud API into SQLite, HTTP API,
 web app (installable PWA) and an offline demo.
 
-[Unreleased]: https://github.com/J-solan/zepp-dashboard/compare/v0.2.0...HEAD
+[0.2.1]: https://github.com/J-solan/zepp-dashboard/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/J-solan/zepp-dashboard/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/J-solan/zepp-dashboard/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/J-solan/zepp-dashboard/releases/tag/v0.1.0
