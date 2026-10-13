@@ -114,13 +114,17 @@ tocado. El sync responde `"modo demo: sincronización desactivada"`.
   el payload esconde en un bloque aparte que casi nadie lee
 - **Estrés** — la serie dispersa que pinta de verdad la app, no un modelo interno
 - **BioCharge** desglosado en `mental` y `physical`, que la app oficial no separa
-- **Readiness**, HRV, FC en reposo, frecuencia respiratoria, VO2max (si tu
-  dispositivo lo da), carga de entreno, pasos
+- **Readiness**, HRV, FC en reposo, temperatura de la piel, frecuencia
+  respiratoria, VO2max (si tu dispositivo lo da), pasos y carga de entreno: la
+  del día y la acumulada de 7 días frente al rango óptimo y de sobrecarga que da
+  Zepp
 - **Entrenos** con overlay de FC, zonas de frecuencia, carga y training effect,
-  más una cola de revisión para las actividades auto-detectadas
+  más una cola de revisión para las actividades auto-detectadas, donde reglas
+  que escribes tú sugieren qué fue cada una
 - **Fuerza**, cruzada con [Hevy](https://www.hevyapp.com/): ejercicio, series,
   peso y grupo muscular curado sobre la fisiología del strap — justo lo que el
-  reloj no puede hacer, porque falla el ejercicio en torno al 80% de las veces
+  reloj no puede hacer, porque falla el ejercicio en torno al 80% de las veces.
+  Se empareja con la sesión del strap por día, o a mano cuando eso no basta
 - **Anotaciones** sobre la línea de tiempo ("reunión tensa", "café doble")
 - **Volumen semanal por músculo** sobre una figura anatómica
 - **Instalable en el móvil** (PWA) y usable **sin conexión**: lo último que

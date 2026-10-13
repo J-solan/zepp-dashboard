@@ -113,14 +113,17 @@ already running is not rebuilt). `--reset` throws your edits away. Sync answers
 - **Stress** — the actual sparse series the app draws, not an internal model
 - **BioCharge** split into `mental` and `physical`, which the official app does
   not separate
-- **Readiness**, HRV, resting HR, respiratory rate, VO2max (if your device
-  reports it), training load, steps
+- **Readiness**, HRV, resting HR, skin temperature, respiratory rate, VO2max
+  (if your device reports it), steps, and training load — daily, and as the
+  7-day sum against Zepp's own optimal and overreaching range
 - **Workouts** with HR overlay, heart-rate zones, load and training effect, plus
-  a review queue for auto-detected activities
+  a review queue for auto-detected activities, where rules you write suggest
+  what each one was
 - **Strength**, cross-referenced with [Hevy](https://www.hevyapp.com/): exercise,
   sets, weight and curated muscle group over the strap's physiology — the thing
   the watch cannot do, because it fails to recognise the exercise about 80% of
-  the time
+  the time. Matched to the strap session by day, or by hand when that is not
+  enough
 - **Annotations** on the timeline ("bad meeting", "double espresso")
 - **Weekly volume per muscle** on an anatomical body map
 - **Installable on your phone** (PWA) and usable **offline**: the last data you
