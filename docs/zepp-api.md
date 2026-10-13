@@ -70,7 +70,7 @@ generation.
 | Workout detail | `/v1/sport/run/detail.json` | `trackid`, `source`. Intra-session HR trace; optional, per-minute HR is already in `band_data`. |
 | Events (multi-purpose) | `/v2/users/me/events` | `eventType`, `subType`, `from`/`to` (**unix ms**), `limit`, `reverse`. See presets below. |
 | User events | `/users/{id}/events` | **Different scope** from the above. `eventType`, `userId`, `from`/`to`. This is where `all_day_stress` lives. |
-| Training load | `/v2/watch/users/{id}/WatchSportStatistics/SPORT_LOAD` | `startDay`/`endDay` (`YYYY-MM-DD`), `limit`, `isReverse`. |
+| Training load | `/v2/watch/users/{id}/WatchSportStatistics/SPORT_LOAD` | `startDay`/`endDay` (`YYYY-MM-DD`), `limit`, `isReverse`. Per `dayId`: `currnetDayTrainLoad` (sic — the day's load), `wtlSum` (**7-day** sum) and `wtlSumOptimalMin`/`wtlSumOptimalMax`/`wtlSumOverreaching`, Zepp's ranges for that sum, which change every few days. `-1` = no data. Never use `wtlSum` as a day's load. |
 | VO2max | `/v2/watch/users/{id}/WatchSportStatistics/VO2_MAX` | Same container as SPORT_LOAD. |
 | Weight | `/users/{id}/members/-1/weightRecords` | `fromTime`/`toTime` unix s. |
 | Per-second HR | `/users/me/fileInfo/events` | Returns a `fileId` pointing at a zipped SEC_HR blob in object storage (extra fetch). Not used here. |
@@ -273,6 +273,14 @@ the highest `item.timestamp`.
 **Sentinel `255`** across the score fields. `sleepHRV` is the curated HRV the app
 displays (matched the overnight RMSSD median to within 1–3 ms) and `sleepRHR`
 matched `band_data`'s resting HR exactly.
+
+Skin temperature comes as `skinTempCalibrated` (int), next to
+`skinTempBaseLine` and `skinTempScore`. Read as **hundredths of °C of deviation
+from your baseline**: on the reference account it ranges −54…+82 (−0.54…+0.82 °C)
+and moves day to day. That unit is an inference, not documented — check one day
+against the app before trusting the decimals. `ahiScore` (apnea) was 100 every
+day and `afibScore` always the sentinel on the reference account, so they feed
+nothing yet.
 
 ---
 

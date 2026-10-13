@@ -340,12 +340,38 @@ def parse_sport_load(payload: dict) -> list[tuple[str, float]]:
     """SPORT_LOAD -> [(day, train_load)].
 
     ``currnetDayTrainLoad`` (typo de la API, sic) es la carga DEL DÍA, que es
-    lo que guarda ``daily_metrics.train_load``. ``wtlSum`` (acumulado semanal)
-    solo se usa si la fila NO trae el campo diario: son métricas distintas y no
-    deben mezclarse. Estructura tomada de ``zepp-health-cli`` (no hay crudo
-    real todavía: validación en vivo pendiente del usuario).
+    lo que guarda ``daily_metrics.train_load``. ``wtlSum`` NO sirve de recambio
+    aunque falte el diario: es el acumulado de 7 días (ver
+    ``parse_sport_load_7d``), y escribirlo como carga de un día la multiplicaba.
+    En el crudo real el campo diario viene en todas las filas.
     """
-    return _watch_statistics_series(payload, ("currnetDayTrainLoad", "wtlSum"))
+    return _watch_statistics_series(payload, ("currnetDayTrainLoad",))
+
+
+# Columna de ``daily_metrics`` <- campo de SPORT_LOAD.
+_LOAD_7D_FIELDS = {
+    "load_7d": "wtlSum",
+    "load_7d_optimal_min": "wtlSumOptimalMin",
+    "load_7d_optimal_max": "wtlSumOptimalMax",
+    "load_7d_overreaching": "wtlSumOverreaching",
+}
+
+
+def parse_sport_load_7d(payload: dict) -> list[dict]:
+    """SPORT_LOAD -> [{day, load_7d, load_7d_optimal_min, load_7d_optimal_max,
+    load_7d_overreaching}].
+
+    ``wtlSum`` es la carga acumulada de los últimos 7 días y los tres
+    ``wtlSum*`` son los rangos que Zepp da para ESE acumulado (no para la carga
+    del día, que es lo que lee ``parse_sport_load``). Los rangos cambian cada
+    pocos días, por eso van por día. Cada campo se lee por separado: un -1 o un
+    campo ausente deja SOLO ese valor en None. Un día sin ninguno no sale.
+    """
+    by_day: dict[str, dict] = {}
+    for column, key in _LOAD_7D_FIELDS.items():
+        for day, value in _watch_statistics_series(payload, (key,)):
+            by_day.setdefault(day, {"day": day, **dict.fromkeys(_LOAD_7D_FIELDS)})[column] = value
+    return list(by_day.values())
 
 
 def parse_vo2max(payload: dict) -> list[tuple[str, float]]:
@@ -431,7 +457,7 @@ def _readiness_sentinel_to_none(value):
 
 
 def parse_readiness(events_payload: dict, tz: str) -> list[dict]:
-    """``readiness/watch_score`` -> [{day, readiness, sleepHRV, sleepRHR, extra}].
+    """``readiness/watch_score`` -> [{day, readiness, sleepHRV, sleepRHR, skin_temp_delta, extra}].
 
     Diseccionado sobre 9 eventos reales (``raw_ingest``,
     ``source='probe:readiness'``): el DÍA se toma de ``value.timestamp``, que
@@ -447,7 +473,15 @@ def parse_readiness(events_payload: dict, tz: str) -> list[dict]:
     ``rdnsScore``/``sleepHRV`` distintos cada vez); se conserva la de
     ``item.timestamp`` más alto por día.
 
-    Centinela 255 -> None, en los tres campos estructurados y en ``extra``
+    ``skin_temp_delta`` es ``skinTempCalibrated`` / 100, en °C: la desviación
+    de la temperatura de la piel de esa noche respecto a tu línea base.
+    HIPÓTESIS sin confirmar contra la app: el campo es un entero (en una cuenta
+    real, -54..+82 con 66 valores distintos en 110 días) y leído como
+    centésimas de grado da -0,54..+0,82 °C, un rango verosímil para la
+    desviación de una noche. Si la app dijera otra cosa, se corrige aquí: el
+    crudo sigue en ``raw_ingest`` y también en ``extra``.
+
+    Centinela 255 -> None, en los campos estructurados y en ``extra``
     (resto de scores/baselines/insights: ahi, afib, skinTemp... — ver
     ``docs/zepp-api.md``). ``extra`` no se persiste todavía.
     """
@@ -470,12 +504,14 @@ def parse_readiness(events_payload: dict, tz: str) -> list[dict]:
             for key, val in value.items()
             if key not in _READINESS_CORE_KEYS and key not in _READINESS_META_KEYS
         }
+        skin_temp = _readiness_sentinel_to_none(value.get("skinTempCalibrated"))
         by_day[day] = {
             "_update_ms": update_ms,
             "day": day,
             "readiness": _readiness_sentinel_to_none(value.get("rdnsScore")),
             "sleepHRV": _readiness_sentinel_to_none(value.get("sleepHRV")),
             "sleepRHR": _readiness_sentinel_to_none(value.get("sleepRHR")),
+            "skin_temp_delta": skin_temp / 100 if skin_temp is not None else None,
             "extra": extra,
         }
     return [{k: v for k, v in entry.items() if k != "_update_ms"} for entry in by_day.values()]

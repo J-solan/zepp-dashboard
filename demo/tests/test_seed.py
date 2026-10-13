@@ -94,6 +94,22 @@ def test_vo2max_on_every_slept_day(conn):
     assert with_vo2 == _one(conn, "SELECT COUNT(*) FROM daily_metrics WHERE hrv_ms IS NOT NULL")
 
 
+def test_skin_temp_and_weekly_load_are_there_to_be_drawn(conn):
+    """Temperatura en décimas de °C (la semana mala, por encima) y el acumulado
+    de 7 días con sus rangos en orden: lo que pintan el Panel y Temporada."""
+    with_temp = _one(conn, "SELECT COUNT(*) FROM daily_metrics WHERE skin_temp_delta BETWEEN -1 AND 1")
+    assert with_temp == _one(conn, "SELECT COUNT(*) FROM daily_metrics WHERE hrv_ms IS NOT NULL")
+    avg = lambda where, *p: _one(conn, f"SELECT AVG(skin_temp_delta) FROM daily_metrics WHERE {where}", *p)
+    assert avg("day BETWEEN ? AND ?", _days_ago(20), _days_ago(14)) > avg("day NOT BETWEEN ? AND ?", _days_ago(20), _days_ago(14))
+
+    ranges = conn.execute(
+        "SELECT load_7d_optimal_min, load_7d_optimal_max, load_7d_overreaching FROM daily_metrics "
+        "WHERE load_7d IS NOT NULL AND load_7d_optimal_min IS NOT NULL"
+    ).fetchall()
+    assert len(ranges) > 60
+    assert all(0 < lo < hi < over for lo, hi, over in ranges)
+
+
 def test_review_queue_has_something_to_review(conn):
     pending = conn.execute("SELECT sport, sport_type FROM workout WHERE review_status = 'pending'").fetchall()
     assert 5 <= len(pending) <= 6

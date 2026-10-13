@@ -52,7 +52,7 @@ def respiratory_payload(day: date, rpms: list[int]) -> dict:
     }
 
 
-def readiness_payload(day: date, *, rdns: int, hrv: int, rhr: int) -> dict:
+def readiness_payload(day: date, *, rdns: int, hrv: int, rhr: int, **value_extra) -> dict:
     ts_ms, _ = run._day_bounds_ms(day, TZ)
     return {
         "items": [
@@ -65,6 +65,7 @@ def readiness_payload(day: date, *, rdns: int, hrv: int, rhr: int) -> dict:
                     "ahiScore": 100,
                     "timestamp": ts_ms,
                     "timestampUpdate": ts_ms + 8 * 3600 * 1000,
+                    **value_extra,
                 },
             }
         ]
@@ -827,6 +828,40 @@ def test_sources_writing_the_same_row_do_not_clobber_each_others_columns(conn):
     assert row == (9999, 333, 59, 17.0, 37, 47.5, TZ)
 
 
+def test_sport_load_stores_weekly_sum_and_ranges_next_to_the_daily_load(conn):
+    item = {
+        "dayId": FIXTURE_DAY.isoformat(),
+        "currnetDayTrainLoad": 37,
+        "wtlSum": 180,
+        "wtlSumOptimalMin": 120,
+        "wtlSumOptimalMax": 260,
+        "wtlSumOverreaching": 330,
+    }
+    client = FakeClient(sport_load={"items": [item]})
+
+    run.run_ingest(conn, client, [FIXTURE_DAY], CONFIG)
+    run.run_ingest(conn, client, [FIXTURE_DAY], CONFIG)
+
+    assert conn.execute(
+        "SELECT train_load, load_7d, load_7d_optimal_min, load_7d_optimal_max, load_7d_overreaching "
+        "FROM daily_metrics WHERE day = ?",
+        (FIXTURE_DAY.isoformat(),),
+    ).fetchone() == (37, 180, 120, 260, 330)
+
+
+def test_sport_load_sentinel_range_does_not_clobber_stored_one(conn):
+    """Un -1 en un rango es "sin dato" en esa respuesta, no un valor nuevo."""
+    day = FIXTURE_DAY.isoformat()
+    full = {"dayId": day, "wtlSum": 180, "wtlSumOptimalMin": 120, "wtlSumOptimalMax": 260, "wtlSumOverreaching": 330}
+    run.run_ingest(conn, FakeClient(sport_load={"items": [full]}), [FIXTURE_DAY], CONFIG)
+
+    run.run_ingest(conn, FakeClient(sport_load={"items": [{**full, "wtlSumOverreaching": -1}]}), [FIXTURE_DAY], CONFIG)
+
+    assert conn.execute(
+        "SELECT load_7d_overreaching FROM daily_metrics WHERE day = ?", (day,)
+    ).fetchone()[0] == 330
+
+
 def test_respiratory_rate_is_the_daily_median(conn):
     client = FakeClient(respiratory=respiratory_payload(FIXTURE_DAY, [0, 14, 16, 18, 20, 0]))
 
@@ -943,6 +978,26 @@ def test_readiness_resting_hr_zero_does_not_clobber_band_data(conn):
     assert conn.execute(
         "SELECT resting_hr FROM daily_metrics WHERE day = ?", (FIXTURE_DAY.isoformat(),)
     ).fetchone()[0] == 59
+
+
+def test_readiness_stores_skin_temp_delta_in_celsius(conn):
+    client = FakeClient(readiness=readiness_payload(FIXTURE_DAY, rdns=70, hrv=65, rhr=48, skinTempCalibrated=-12))
+
+    run.run_ingest(conn, client, [FIXTURE_DAY], CONFIG)
+
+    assert conn.execute(
+        "SELECT skin_temp_delta FROM daily_metrics WHERE day = ?", (FIXTURE_DAY.isoformat(),)
+    ).fetchone()[0] == -0.12
+
+
+def test_readiness_skin_temp_sentinel_stays_null(conn):
+    client = FakeClient(readiness=readiness_payload(FIXTURE_DAY, rdns=70, hrv=65, rhr=48, skinTempCalibrated=255))
+
+    run.run_ingest(conn, client, [FIXTURE_DAY], CONFIG)
+
+    assert conn.execute(
+        "SELECT skin_temp_delta FROM daily_metrics WHERE day = ?", (FIXTURE_DAY.isoformat(),)
+    ).fetchone()[0] is None
 
 
 def test_readiness_with_no_items_does_not_touch_daily_metrics(conn):

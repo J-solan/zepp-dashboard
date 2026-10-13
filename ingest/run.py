@@ -390,7 +390,7 @@ def fetch_readiness(client: Any, day: date, tz: str) -> Any:
 
 
 def process_readiness(conn: sqlite3.Connection, payload: Any, day: date, tz: str) -> None:
-    """events readiness/watch_score → daily_metrics.readiness/hrv_ms/resting_hr.
+    """events readiness/watch_score → daily_metrics.readiness/hrv_ms/resting_hr/skin_temp_delta.
 
     HRV: se persiste ``sleepHRV`` (curado por Zepp) en vez del agregado
     nocturno de HRVRMSSD/real_data — cruce empírico documentado en
@@ -412,6 +412,8 @@ def process_readiness(conn: sqlite3.Connection, payload: Any, day: date, tz: str
             fields["hrv_ms"] = entry["sleepHRV"]
         if entry["sleepRHR"]:  # 0 lpm es centinela, no un dato: no pisa el de band_data
             fields["resting_hr"] = entry["sleepRHR"]
+        if entry["skin_temp_delta"] is not None:
+            fields["skin_temp_delta"] = entry["skin_temp_delta"]
         if fields:
             _upsert_daily(conn, entry["day"], **fields)
     conn.commit()
@@ -521,11 +523,18 @@ def process_daily_health(conn: sqlite3.Connection, payload: Any, day: date, tz: 
 
 
 def ingest_sport_load(conn: sqlite3.Connection, client: Any, days: list[date], config: dict) -> None:
-    """SPORT_LOAD (endpoint de rango) → daily_metrics.train_load."""
+    """SPORT_LOAD (endpoint de rango) → daily_metrics.train_load y load_7d*.
+
+    Un rango que llega como -1 no pisa el guardado: es "sin dato en esta
+    respuesta", igual que en ``process_readiness``.
+    """
     payload = client.sport_load(days[0], days[-1])
     store_raw(conn, "sport_load", days[-1].isoformat(), payload)
     for day_key, value in parsers.parse_sport_load(payload):
         _upsert_daily(conn, day_key, train_load=value)
+    for entry in parsers.parse_sport_load_7d(payload):
+        fields = {k: v for k, v in entry.items() if k != "day" and v is not None}
+        _upsert_daily(conn, entry["day"], **fields)
     conn.commit()
 
 

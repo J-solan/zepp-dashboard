@@ -317,12 +317,33 @@ def build(
             )
         )
 
+    # Carga de 7 días y sus rangos, como SPORT_LOAD. El acumulado, solo con la
+    # semana entera (uno a medias se leería como "bajo"). Los rangos salen de
+    # la carga crónica (media de los acumulados de las 4 semanas previas) y se
+    # recalculan cada 4 días: en Zepp también cambian cada pocos días. Con
+    # menos de una semana de acumulados no hay base y no se dan.
+    week_load = [sum(load_by_day[j] for j in range(i - 6, i + 1)) if i >= 6 else None for i in range(days)]
+
+    def load_ranges(i: int) -> tuple[int | None, int | None, int | None]:
+        anchor = i - i % 4
+        window = [v for v in week_load[max(0, anchor - 27) : anchor + 1] if v is not None]
+        if len(window) < 7:
+            return None, None, None
+        chronic = sum(window) / len(window)
+        return round(chronic * 0.8), round(chronic * 1.3), round(chronic * 1.6)
+
+    # Azar propio para la temperatura: sacarla de ``rng`` o ``extra`` movería
+    # todo lo que se sortea después y la demo de siempre cambiaría.
+    skin = random.Random(seed + 2)
     daily_rows = []
     for i, d in enumerate(dates):
         steps = rng.randint(5500, 11000) - (2500 if i in bad_week else 0)
         hrv = 85 + rng.gauss(0, 9) - (25 if i in bad_week else 0)
         resp = 16.4 + rng.gauss(0, 0.4) + (0.6 if i in bad_week else 0)
         vo2 = 44 + 2 * i / days + extra.gauss(0, 0.4)  # mejora despacio con el entreno
+        # Sube con la FC en reposo, como cuando el cuerpo pelea con algo: la
+        # semana mala sale unas décimas por encima de tu línea base.
+        skin_temp = (rest_hr[i] - 51) * 0.08 + skin.gauss(0, 0.15)
         noise = rng.gauss(0, 3)
         if i in off_days or until <= bounds[i]:
             continue
@@ -344,6 +365,9 @@ def build(
                 round(vo2) if slept else None,
                 load_by_day[i],
                 tz,
+                round(skin_temp, 2) if slept else None,
+                week_load[i],
+                *load_ranges(i),
             )
         )
 
@@ -431,7 +455,9 @@ def build(
         )
         conn.executemany(
             "INSERT INTO daily_metrics (day, steps, calories, resting_hr, readiness, hrv_ms, "
-            "respiratory_rate, stress_avg, vo2max, train_load, tz) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "respiratory_rate, stress_avg, vo2max, train_load, tz, skin_temp_delta, load_7d, "
+            "load_7d_optimal_min, load_7d_optimal_max, load_7d_overreaching) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             daily_rows,
         )
         # Un sync 'ok' cada día, también los días sin pulsera: el sync fue

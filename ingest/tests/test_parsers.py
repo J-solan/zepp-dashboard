@@ -315,9 +315,9 @@ def test_parse_sport_load_skips_day_without_data_instead_of_using_weekly_sum():
     assert parsers.parse_sport_load(payload) == []
 
 
-def test_parse_sport_load_falls_back_only_when_daily_field_is_absent():
+def test_parse_sport_load_never_takes_the_7_day_sum_as_the_daily_load():
     payload = {"items": [{"dayId": "2026-07-22", "wtlSum": 120}]}
-    assert parsers.parse_sport_load(payload) == [("2026-07-22", 120)]
+    assert parsers.parse_sport_load(payload) == []
 
 
 def test_parse_watch_statistics_normalises_numeric_dayid():
@@ -333,6 +333,49 @@ def test_parse_vo2max_reads_value_and_skips_sentinel():
 def test_parse_watch_statistics_empty_payload():
     assert parsers.parse_sport_load({}) == []
     assert parsers.parse_vo2max({"items": []}) == []
+
+
+def test_parse_sport_load_7d_reads_weekly_sum_and_its_ranges():
+    payload = {
+        "items": [
+            {
+                "dayId": 20260722,
+                "currnetDayTrainLoad": 37,
+                "wtlSum": 180,
+                "wtlSumOptimalMin": 120,
+                "wtlSumOptimalMax": 260,
+                "wtlSumOverreaching": 330,
+            }
+        ]
+    }
+    assert parsers.parse_sport_load_7d(payload) == [
+        {
+            "day": "2026-07-22",
+            "load_7d": 180,
+            "load_7d_optimal_min": 120,
+            "load_7d_optimal_max": 260,
+            "load_7d_overreaching": 330,
+        }
+    ]
+
+
+def test_parse_sport_load_7d_missing_or_sentinel_field_is_none_and_empty_day_is_skipped():
+    payload = {
+        "items": [
+            {"dayId": "2026-07-22", "wtlSum": 0, "wtlSumOptimalMin": -1, "wtlSumOptimalMax": 260},
+            {"dayId": "2026-07-23", "currnetDayTrainLoad": 12},  # sin acumulado: nada que guardar
+        ]
+    }
+    assert parsers.parse_sport_load_7d(payload) == [
+        {
+            "day": "2026-07-22",
+            "load_7d": 0,  # 0 es "no entrenaste en 7 días", no un hueco
+            "load_7d_optimal_min": None,
+            "load_7d_optimal_max": 260,
+            "load_7d_overreaching": None,
+        }
+    ]
+    assert parsers.parse_sport_load_7d({}) == []
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +590,21 @@ def test_parse_readiness_extra_dict_holds_secondary_scores_without_duplicating_c
     assert "rdnsScore" not in extra
     assert "sleepHRV" not in extra
     assert "sleepRHR" not in extra
+
+
+@pytest.mark.parametrize(("raw", "celsius"), [(-54, -0.54), (82, 0.82), (0, 0.0), (255, None)])
+def test_parse_readiness_skin_temp_delta_is_hundredths_of_a_degree(raw, celsius):
+    value_ts = _local_midnight_ms(date(2026, 7, 22))
+    payload = {"items": [_readiness_item(value_ts, value_ts, skinTempCalibrated=raw)]}
+
+    assert parsers.parse_readiness(payload, TZ)[0]["skin_temp_delta"] == celsius
+
+
+def test_parse_readiness_skin_temp_delta_absent_is_none():
+    value_ts = _local_midnight_ms(date(2026, 7, 22))
+    payload = {"items": [_readiness_item(value_ts, value_ts)]}
+
+    assert parsers.parse_readiness(payload, TZ)[0]["skin_temp_delta"] is None
 
 
 # ---------------------------------------------------------------------------
