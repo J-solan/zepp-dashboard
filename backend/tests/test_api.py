@@ -21,7 +21,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ingest import db, hevy, run
-from ingest.tests.test_hevy import base_row, write_csv
+from ingest.review_rules import compile_rules
+from ingest.tests.test_hevy import add_strap_workout, base_row, write_csv
 from ingest.tests.test_run import CONFIG, FIXTURE_DAY, FakeClient
 
 from backend.api import _day_range_ts, create_app, get_conn
@@ -653,6 +654,42 @@ def test_review_invalid_action_is_422(client: TestClient):
 
 
 # ---------------------------------------------------------------------------
+# Sugerencias de las reglas de revisión
+# ---------------------------------------------------------------------------
+
+
+def _local_day(ts: int) -> str:
+    return datetime.fromtimestamp(ts, ZoneInfo(TZ)).date().isoformat()
+
+
+def test_pending_without_rules_carries_no_suggestion(client: TestClient):
+    assert all(p["suggestion"] is None for p in client.get("/api/workouts/pending").json())
+
+
+def test_pending_carries_the_suggestion_of_the_first_matching_rule(db_path: Path):
+    """Pendientes del fixture: 28-jun (mié, 64 min), 30-jun (vie, 54 min),
+    02-jul (dom, 14 min) y 06-jul (jue, code 777). Las reglas solo sugieren: los
+    cuatro siguen en la cola."""
+    rules = compile_rules(
+        [
+            {"name": "Muy corta", "ignore": True, "minutes": [0, 20]},
+            {"name": "Code raro", "sport": "remo", "codes": [777]},
+            {"sport": "yoga", "weekdays": [5]},
+        ]
+    )
+    client = TestClient(create_app(db_path=db_path, tz=TZ, review_rules=rules))
+
+    pending = client.get("/api/workouts/pending").json()
+    assert {_local_day(p["start_ts"]): p["suggestion"] for p in pending} == {
+        "2006-06-28": None,
+        "2006-06-30": {"action": "classify", "sport": "yoga", "rule": None},
+        "2006-07-02": {"action": "ignore", "rule": "Muy corta"},
+        "2006-07-06": {"action": "classify", "sport": "remo", "rule": "Code raro"},
+    }
+    assert all(p["review_status"] == "pending" for p in pending)
+
+
+# ---------------------------------------------------------------------------
 # Cruce Hevy <-> strap en /api/workouts
 # ---------------------------------------------------------------------------
 
@@ -854,6 +891,122 @@ def test_reclassifying_out_of_fuerza_releases_the_link(
     workouts = client.get("/api/workouts", params=WORKOUTS_RANGE).json()
     assert next(w for w in workouts if w["source"] == "hevy")["strap"] is None
     assert target["id"] in [w["id"] for w in workouts]
+
+
+# ---------------------------------------------------------------------------
+# Vínculo Hevy <-> strap a mano
+# ---------------------------------------------------------------------------
+
+
+def _hevy_workout(client: TestClient) -> dict:
+    return next(w for w in client.get("/api/workouts", params=WORKOUTS_RANGE).json() if w["source"] == "hevy")
+
+
+def _listed_ids(client: TestClient) -> list[int]:
+    return [w["id"] for w in client.get("/api/workouts", params=WORKOUTS_RANGE).json()]
+
+
+def _link(client: TestClient, hevy_id: int, strap_id: int | None):
+    return client.put(f"/api/workouts/{hevy_id}/link", json={"strap_id": strap_id})
+
+
+def _row(db_path: Path, workout_id: int) -> dict:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        return dict(conn.execute("SELECT * FROM workout WHERE id = ?", (workout_id,)).fetchone())
+    finally:
+        conn.close()
+
+
+def _discarded_session_and_its_hevy(client: TestClient, db_path: Path, tmp_path: Path) -> tuple[dict, int]:
+    """El caso que el automático no cubre: la sesión del reloj se descartó y ese
+    día no queda fuerza con la que emparejar el entreno de Hevy."""
+    target = _pending_on(client, PENDING_DAY)
+    client.post(f"/api/workouts/{target['id']}/review", json={"action": "ignore"})
+    assert _import_hevy(db_path, tmp_path, PENDING_DAY)["linked"] == 0
+    return target, _hevy_workout(client)["id"]
+
+
+def test_linking_by_hand_turns_the_session_into_strength_and_adopts_its_window(
+    client: TestClient, db_path: Path, tmp_path: Path
+):
+    target, hevy_id = _discarded_session_and_its_hevy(client, db_path, tmp_path)
+
+    resp = _link(client, hevy_id, target["id"])
+    assert resp.status_code == 200
+    assert resp.json()["strap"]["id"] == target["id"]
+    assert (resp.json()["start_ts"], resp.json()["end_ts"]) == (target["start_ts"], target["end_ts"])
+
+    session = _row(db_path, target["id"])
+    assert (session["review_status"], session["user_sport"]) == ("classified", "fuerza")
+    assert target["id"] not in _listed_ids(client)  # absorbida por el de Hevy
+
+
+def test_a_hevy_reimport_keeps_the_link_made_by_hand(client: TestClient, db_path: Path, tmp_path: Path):
+    target, hevy_id = _discarded_session_and_its_hevy(client, db_path, tmp_path)
+    _link(client, hevy_id, target["id"])
+
+    assert _import_hevy(db_path, tmp_path, PENDING_DAY)["linked"] == 1
+    assert _hevy_workout(client)["strap"]["id"] == target["id"]
+
+
+def test_relinking_moves_the_hevy_to_another_session_of_that_day(
+    client: TestClient, db_path: Path, tmp_path: Path
+):
+    assert _import_hevy(db_path, tmp_path, STRAP_STRENGTH_DAY)["linked"] == 1
+    hevy_workout = _hevy_workout(client)
+    old_id = hevy_workout["strap"]["id"]
+    conn = sqlite3.connect(db_path)
+    new_id = add_strap_workout(conn, STRAP_STRENGTH_DAY, 9, sport_type=223)
+    conn.commit()
+    conn.close()
+
+    resp = _link(client, hevy_workout["id"], new_id)
+    assert resp.status_code == 200
+    assert resp.json()["strap"]["id"] == new_id
+    assert old_id in _listed_ids(client)  # la anterior vuelve a la lista
+    assert new_id not in _listed_ids(client)
+
+    # Volver a la que ya era de fuerza no la toca: no se reclasifica lo que ya lo es.
+    assert _link(client, hevy_workout["id"], old_id).json()["strap"]["id"] == old_id
+    session = _row(db_path, old_id)
+    assert (session["review_status"], session["user_sport"]) == ("auto", None)
+
+
+def test_unlinking_releases_the_session(client: TestClient, db_path: Path, tmp_path: Path):
+    _import_hevy(db_path, tmp_path, STRAP_STRENGTH_DAY)
+    hevy_workout = _hevy_workout(client)
+
+    resp = _link(client, hevy_workout["id"], None)
+    assert resp.status_code == 200
+    assert (resp.json()["linked_workout_id"], resp.json()["strap"]) == (None, None)
+    assert hevy_workout["strap"]["id"] in _listed_ids(client)
+
+
+def test_link_validations(client: TestClient, db_path: Path, tmp_path: Path):
+    _import_hevy(db_path, tmp_path, STRAP_STRENGTH_DAY)
+    hevy_workout = _hevy_workout(client)
+    hevy_id, strap_id = hevy_workout["id"], hevy_workout["strap"]["id"]
+
+    assert _link(client, 999999, strap_id).status_code == 404
+    assert _link(client, strap_id, strap_id).status_code == 400  # el origen no es de Hevy
+    assert _link(client, hevy_id, 999999).status_code == 404
+    assert _link(client, hevy_id, hevy_id).status_code == 400  # el destino no es de la pulsera
+    other_day = _pending_on(client, PENDING_DAY)["id"]
+    assert _link(client, hevy_id, other_day).status_code == 400
+
+    # Una sesión no puede quedar vinculada a dos entrenos de Hevy.
+    conn = sqlite3.connect(db_path)
+    second = conn.execute(
+        "INSERT INTO workout (source, external_id, sport, start_ts, end_ts) VALUES ('hevy','otro',?,?,?)",
+        ("fuerza", hevy_workout["start_ts"] + 3600, hevy_workout["end_ts"] + 3600),
+    ).lastrowid
+    conn.commit()
+    conn.close()
+    assert _link(client, second, strap_id).status_code == 409
+    assert _row(db_path, second)["linked_workout_id"] is None
+    assert _row(db_path, hevy_id)["linked_workout_id"] == strap_id
 
 
 # ---------------------------------------------------------------------------

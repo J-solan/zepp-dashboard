@@ -37,7 +37,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ingest import hevy, run
+from ingest import hevy, review_rules, run
 from ingest.auth import ZeppAuth
 from ingest.client import ZeppClient
 from ingest.config import load_config
@@ -708,6 +708,9 @@ def get_workouts_pending(request: Request, conn: sqlite3.Connection = Depends(ge
     for row in rows:
         item = _serialize_workout(row)
         item["hevy_evidence"] = _hevy_evidence(conn, row["start_ts"], tz)
+        # Solo SUGIERE (``[[review_rules]]`` del config): aplicarla es un clic
+        # del usuario por ``POST /api/workouts/{id}/review``.
+        item["suggestion"] = review_rules.suggest(row, request.app.state.review_rules, tz)
         result.append(item)
     return result
 
@@ -959,6 +962,72 @@ def patch_workout(
     return _serialize_workout(row, conn)
 
 
+class WorkoutLink(BaseModel):
+    strap_id: int | None
+
+
+@router.put("/api/workouts/{workout_id}/link")
+def put_workout_link(
+    workout_id: int,
+    body: WorkoutLink,
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    """Vincula a mano un entreno de Hevy con una sesión de la pulsera del mismo
+    día local, o lo desvincula (``strap_id: null``).
+
+    Cubre lo que el automático (``hevy.link_to_strap``) no resuelve: un día sin
+    sesión de fuerza (la del reloj se descartó o quedó como otra cosa) o con
+    varias. Al vincular, la sesión **pasa a fuerza** si no lo era: así el
+    matching por día de cada import la vuelve a encontrar y el vínculo
+    sobrevive sin columna nueva. Y el entreno adopta la ventana horaria de la
+    pulsera, igual que en el automático.
+    """
+    tz = request.app.state.tz
+    row = conn.execute("SELECT * FROM workout WHERE id = ?", (workout_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="workout no encontrado")
+    if row["source"] != "hevy":
+        raise HTTPException(status_code=400, detail="solo se vinculan entrenos de Hevy")
+
+    if body.strap_id is None:
+        conn.execute("UPDATE workout SET linked_workout_id = NULL WHERE id = ?", (workout_id,))
+    else:
+        strap = conn.execute("SELECT * FROM workout WHERE id = ?", (body.strap_id,)).fetchone()
+        if strap is None:
+            raise HTTPException(status_code=404, detail="sesión de la pulsera no encontrada")
+        if strap["source"] != "zepp":
+            raise HTTPException(status_code=400, detail="solo se vincula con una sesión de la pulsera")
+        if _local_day(strap["start_ts"], tz) != _local_day(row["start_ts"], tz):
+            raise HTTPException(status_code=400, detail="la sesión de la pulsera es de otro día")
+        taken = conn.execute(
+            "SELECT 1 FROM workout WHERE linked_workout_id = ? AND id != ?", (body.strap_id, workout_id)
+        ).fetchone()
+        if taken:
+            raise HTTPException(status_code=409, detail="esa sesión ya está vinculada a otro entreno de Hevy")
+
+        # ponytail: el vínculo a mano se guarda haciendo fuerza la sesión, y lo
+        # rehace el matching por día de cada import. Techo: si ese día quedan
+        # dos sesiones de fuerza (p. ej. la que estaba vinculada antes), un
+        # reimport lo deja ambiguo y sin vínculo; y un "desvincular" lo deshace
+        # el siguiente import si la sesión sigue siendo de fuerza. Mejora: una
+        # columna de vínculo manual que el import respete.
+        strength_sport = request.app.state.strength_sport
+        if strap["review_status"] in ("pending", "ignored") or _effective_sport(strap) != strength_sport:
+            conn.execute(
+                "UPDATE workout SET review_status = 'classified', user_sport = ? WHERE id = ?",
+                (strength_sport, body.strap_id),
+            )
+        conn.execute(
+            "UPDATE workout SET linked_workout_id = ?, start_ts = ?, end_ts = ? WHERE id = ?",
+            (body.strap_id, strap["start_ts"], strap["end_ts"], workout_id),
+        )
+    conn.commit()
+
+    row = conn.execute("SELECT * FROM workout WHERE id = ?", (workout_id,)).fetchone()
+    return _serialize_workout(row, conn)
+
+
 # ---------------------------------------------------------------------------
 # Sync on-demand: background task + polling (síncrono = timeout)
 # ---------------------------------------------------------------------------
@@ -1045,6 +1114,7 @@ def create_app(
     api_token: str | None = None,
     cors_origins: list[str] | None = None,
     strength_sport: str = hevy.DEFAULT_STRENGTH_SPORT,
+    review_rules: list[dict[str, Any]] | None = None,
     sync_config: dict | None = None,
     sync_off_reason: str = "ingest/config.toml no configurado",
     sync_client_factory: Callable[[dict], Any] = _default_sync_client_factory,
@@ -1054,6 +1124,7 @@ def create_app(
     app.state.tz = tz
     app.state.api_token = api_token
     app.state.strength_sport = strength_sport
+    app.state.review_rules = review_rules or []
     app.state.sync_config = sync_config
     app.state.sync_off_reason = sync_off_reason
     app.state.sync_client_factory = sync_client_factory
@@ -1094,5 +1165,7 @@ app = create_app(
     api_token=_config.get("api_token"),
     cors_origins=_config.get("cors_origins"),
     strength_sport=_config.get("strength_sport", hevy.DEFAULT_STRENGTH_SPORT),
+    # Una regla mal escrita es un ValueError aquí: la API no arranca con ella.
+    review_rules=review_rules.compile_rules(_config.get("review_rules", [])),
     sync_config=_config or None,
 )

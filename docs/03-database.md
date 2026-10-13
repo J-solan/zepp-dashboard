@@ -73,7 +73,7 @@ Two time conventions, and mixing them up is the classic bug here:
 | `hr_minute` | `(ts, bpm)` — one row per minute. Sentinels already dropped, so gaps are real gaps |
 | `stress_sample` | `(ts, value)` — 0-100, sparse by nature |
 | `biocharge` | `(ts, total, mental, physical, status)`. `total` may be `NULL` (sentinel 255) while the others are valid |
-| `daily_metrics` | Wide, one row per day: `steps, calories, resting_hr, readiness, hrv_ms, respiratory_rate, stress_avg, vo2max, train_load, tz` |
+| `daily_metrics` | Wide, one row per day: `steps, calories, resting_hr, readiness, hrv_ms, respiratory_rate, stress_avg, vo2max, train_load, skin_temp_delta, load_7d, load_7d_optimal_min, load_7d_optimal_max, load_7d_overreaching, tz` |
 | `sleep_session` | One row per session. `is_nap = 1` marks a nap, which has no `score`, `resting_hr` or `wake_count` — those belong to the night |
 | `sleep_stage` | The hypnogram: `session_id, start_ts, end_ts, stage` — 4/5/7/8 = light/deep/awake/REM |
 | `workout` | Both sources. `source` is `'zepp'` or `'hevy'`; `linked_workout_id` points a Hevy workout at its strap counterpart. `user_title`, `notes`, `user_sport` and `review_status` are **yours** — see below |
@@ -98,6 +98,12 @@ you reorder that list:
 `hrv_ms` comes from `readiness.sleepHRV` (Zepp's curated value, matching what the
 app shows) rather than aggregating the raw RMSSD samples. Those are still fetched
 and kept in `raw_ingest`, feeding no column.
+
+`skin_temp_delta` (°C, deviation from your baseline) also comes from readiness.
+`train_load` is the day's load from SPORT_LOAD; the `load_7d*` columns are, from
+the same rows, the 7-day sum and the optimal and overreaching levels Zepp gives
+**for that sum**, which change every few days. A `-1` (no data) never
+overwrites a stored value.
 
 ### Where your own edits live
 
@@ -187,7 +193,7 @@ timestamps are **unix seconds UTC**.
 | `GET /api/sports` | `[{name, color}]` — every sport this database knows: your `[sport_types]` values, everything typed into `user_sport`, and labels created by hand. `color` is `null` when none was chosen |
 | `PUT /api/sports/{name}` | `{color}` — creates the label or recolours it. Same gesture either way |
 | `DELETE /api/sports/{name}` | Drops the colour and the empty label. **Never touches workouts**: a name still in use keeps existing, uncoloured |
-| `GET /api/workouts/pending` | Unclassified workouts, each with `hevy_evidence` if a same-day Hevy session might explain it |
+| `GET /api/workouts/pending` | Unclassified workouts, each with `hevy_evidence` if a same-day Hevy session might explain it, and `suggestion` (`{action, sport?, rule}` or `null`) from the first matching `[[review_rules]]` — a suggestion only, nothing is applied |
 | `GET /api/annotations?from&to` | Annotations **overlapping** the range, not just starting in it |
 
 ### Writing
@@ -198,6 +204,7 @@ timestamps are **unix seconds UTC**.
 | `PATCH /api/workouts/{id}` | `{user_title?, notes?, user_sport?}` — edit what is yours. An **absent** field is left alone; an explicit `null` clears it. Survives re-ingestion |
 | `DELETE /api/workouts/{id}` | Deletes a **manual** workout. **409** on watch workouts: deleting one is pointless, the next sync brings it back — discard it instead |
 | `POST /api/workouts/{id}/review` | `{action: "classify"\|"ignore"\|"restore", sport?}` — classify, discard, or undo a discard |
+| `PUT /api/workouts/{id}/link` | `{strap_id}` links a **Hevy** workout to a strap session of the same local day (`null` unlinks). The session becomes strength so re-imports keep the link. **400** wrong source or day, **404** unknown id, **409** session already linked to another Hevy workout |
 | `POST /api/annotations` | `{start_ts, end_ts, text}` |
 | `DELETE /api/annotations/{id}` | |
 | `POST /api/sync` | Starts an ingest in a background thread, returns **202** immediately (a full sync takes minutes — a synchronous call would time out). **409** if one is already running |

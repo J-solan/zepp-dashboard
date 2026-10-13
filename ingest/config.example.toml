@@ -40,23 +40,12 @@ ventana_dias = 30
 # pasado ese margen; un día pedido mientras estaba en curso se vuelve a pedir.
 safety_days = 1
 
-[sport_types]
-# Mapa sport_type (code numérico) -> nombre legible. Un code que NO aparezca
-# aquí entra en la cola de revisión (review_status='pending'), igual que toda
-# sesión que la pulsera auto-detectó (auto_recognition). Si lo mapeas después,
-# el siguiente sync saca de la cola lo que solo estaba ahí por ese code.
-# Estos tres codes están validados con un Amazfit Helio Strap; otro dispositivo
-# puede usar otros. Los que descubras van aquí.
-52 = "fuerza"
-122 = "voley_playa"
-223 = "auto_ia"
-
 # ---------------------------------------------------------------------------
 # Backend (todo opcional: sin nada de esto la API funciona igual)
 # ---------------------------------------------------------------------------
 
 # Nombre del deporte que se cruza con los entrenos de Hevy. Debe coincidir con
-# uno de los valores de [sport_types] de arriba: es el nombre, y no el code,
+# uno de los valores de [sport_types] de abajo: es el nombre, y no el code,
 # lo que dispara el vínculo, para que valga con cualquier dispositivo.
 # strength_sport = "fuerza"
 
@@ -72,3 +61,59 @@ safety_days = 1
 # origen distinto al backend; con `npm run build` uvicorn sirve la web él mismo
 # y CORS deja de intervenir. El default cubre el `npm run dev` de Vite.
 # cors_origins = ["http://localhost:5173"]
+
+# ---------------------------------------------------------------------------
+# Deportes (las tablas van DESPUÉS de todas las claves sueltas: en TOML, lo
+# que sigue a una cabecera [tabla] es de esa tabla, y un api_token escrito
+# debajo de [sport_types] acabaría dentro de ella con la API abierta)
+# ---------------------------------------------------------------------------
+
+[sport_types]
+# Mapa sport_type (code numérico) -> nombre legible. Un code que NO aparezca
+# aquí entra en la cola de revisión (review_status='pending'), igual que toda
+# sesión que la pulsera auto-detectó (auto_recognition). Si lo mapeas después,
+# el siguiente sync saca de la cola lo que solo estaba ahí por ese code.
+# Estos tres codes están validados con un Amazfit Helio Strap; otro dispositivo
+# puede usar otros. Los que descubras van aquí.
+52 = "fuerza"
+122 = "voley_playa"
+223 = "auto_ia"
+
+# ---------------------------------------------------------------------------
+# Reglas de la cola de revisión (opcional; va al FINAL del fichero)
+# ---------------------------------------------------------------------------
+
+# Cada regla SUGIERE qué fue un entreno pendiente, nunca lo aplica sola: la
+# cola muestra "Regla: <name> → <deporte>" con un botón para aplicarla (o
+# todas de una vez). Gana la PRIMERA que encaje: de la más concreta a la más
+# general. Cada regla lleva `sport = "<nombre>"` (clasificar como ese deporte)
+# o `ignore = true` (descartar), un `name` opcional y condiciones opcionales,
+# que se combinan con Y (sin ninguna, encaja con todo):
+#   minutes  = [mín, máx]          duración en minutos, ambos incluidos
+#   start    = ["HH:MM", "HH:MM"]  hora local de inicio (la `tz` de arriba); si
+#                                  la primera es mayor, cruza la medianoche
+#   weekdays = [1, 3]              1 = lunes … 7 = domingo
+#   months   = [6, 7, 8]           1-12
+#   max_load = 10                  carga de entrenamiento <= N (sin carga = 0)
+#   codes    = [223]               sport codes del reloj
+# Una clave mal escrita o un valor raro impide arrancar la API con un error que
+# dice qué regla y qué clave: mejor eso que una regla que, por una errata, lo
+# atrape todo.
+#
+# [[review_rules]]
+# name = "Natación antes del trabajo"
+# sport = "natacion"
+# start = ["06:00", "07:45"]
+# weekdays = [1, 3, 5]
+# minutes = [30, 60]
+#
+# [[review_rules]]
+# name = "Yoga del domingo"
+# sport = "yoga"
+# weekdays = [7]
+# max_load = 20
+#
+# [[review_rules]]
+# name = "Demasiado corta para contar"
+# ignore = true
+# minutes = [0, 4]

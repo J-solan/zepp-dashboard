@@ -312,8 +312,8 @@ def link_to_strap(
       del strap: la ventana del reloj es la hora oficial, la del CSV es manual.
       Sin esto, el overlay de FC se pintaría desplazado.
     - **0 o >1 candidatos** → sin vínculo, y el día se devuelve en la lista de
-      avisos para que el usuario lo resuelva a mano (re-vinculación manual en la
-      UI, pendiente).
+      avisos para que el usuario lo resuelva a mano (``PUT
+      /api/workouts/{id}/link``, desde el detalle del entreno en la web).
 
     Devuelve ``(vinculados, [(día, nº candidatos), ...])``.
     """
