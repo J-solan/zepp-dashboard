@@ -1,0 +1,8 @@
+{
+  "name": "zepp-dashboard-pages-demo",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "pyodide": "314.0.7"
+  }
+}

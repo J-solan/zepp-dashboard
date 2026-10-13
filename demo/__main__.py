@@ -21,11 +21,10 @@ from zoneinfo import ZoneInfo
 import uvicorn
 
 from backend.api import FRONTEND_DIST, create_app
-from demo import seed
+from demo import SYNC_OFF_REASON, seed
 from ingest.db import REPO_ROOT
 
 DEMO_DB = REPO_ROOT / "data" / "demo.db"
-SYNC_OFF_REASON = "modo demo: sincronización desactivada"
 # Hoy debe terminar cerca de ahora; reiniciar dentro de este margen conserva lo tocado.
 STALE_AFTER_S = 3 * 3600
 
