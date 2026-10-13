@@ -4,6 +4,39 @@ Notable changes per release. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Sync:** the raw `sport_history` payload (the whole workout history) is kept
+  as a single row instead of a new copy per synced day. The next sync removes
+  the old copies.
+- **Sleep:** an empty sleep summary (start = end, no stages) is no longer stored
+  as a 0-minute night with a resting heart rate of 0; a migration removes the
+  ones already stored. A night fetched again with a different start replaces
+  the old one instead of leaving two.
+- **Sync:** far from UTC, stress and respiratory rate land on the right day.
+  Respiratory rate is now the median of the local day (it was the UTC day);
+  stored values update when their day is fetched again. A day's last hours of
+  stress are no longer left incomplete when syncing just after midnight.
+- **Sync:** heart rate derived for manual and Hevy workouts is recomputed on
+  every sync, so it no longer stays partial when the strap uploads the rest
+  later.
+- **Hevy:** exports with English month names import. Renaming a workout in
+  Hevy updates it instead of importing it again as a new one.
+- **Web:** "Ver descartados" stays reachable when the range has nothing else.
+  Failing to save or delete a note or a sport colour shows an error, and the
+  colour picker saves once instead of on every step of the drag.
+- **Web:** the Panel shows loading and error states instead of "Sin datos
+  todavía". In "Fechas", a cleared or half-typed date is not applied (it
+  showed "Invalid Date", and typing a year could freeze the tab). The "Día"
+  view no longer draws its axis dates on top of each other.
+- **Docs:** the route B example no longer fails on a day without sleep.
+
+### Security
+
+- The API token is compared in constant time.
+
 ## [0.2.0] - 2026-10-12
 
 ### Added
@@ -67,6 +100,7 @@ Notable changes per release. The format follows
 First public release: ingestion from the Zepp cloud API into SQLite, HTTP API,
 web app (installable PWA) and an offline demo.
 
+[Unreleased]: https://github.com/J-solan/zepp-dashboard/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/J-solan/zepp-dashboard/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/J-solan/zepp-dashboard/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/J-solan/zepp-dashboard/releases/tag/v0.1.0
