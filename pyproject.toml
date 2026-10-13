@@ -1,6 +1,6 @@
 [project]
 name = "zepp-dashboard"
-version = "0.3.0"
+version = "0.3.1"
 description = "Dashboard personal de salud Zepp/Amazfit + Hevy (ingesta, backend y web propios)."
 requires-python = ">=3.11"
 dependencies = [

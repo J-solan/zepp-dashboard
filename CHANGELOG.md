@@ -4,7 +4,7 @@ Notable changes per release. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.3.1] - 2026-10-13
 
 ### Added
 
@@ -161,7 +161,7 @@ Notable changes per release. The format follows
 First public release: ingestion from the Zepp cloud API into SQLite, HTTP API,
 web app (installable PWA) and an offline demo.
 
-[Unreleased]: https://github.com/J-solan/zepp-dashboard/compare/v0.3.0...HEAD
+[0.3.1]: https://github.com/J-solan/zepp-dashboard/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/J-solan/zepp-dashboard/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/J-solan/zepp-dashboard/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/J-solan/zepp-dashboard/compare/v0.1.1...v0.2.0
