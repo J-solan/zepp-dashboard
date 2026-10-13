@@ -15,6 +15,8 @@ export interface ReviewQueue {
   pending: PendingWorkout[]
   error: string | null
   review: (id: number, body: ReviewBody) => Promise<void>
+  /** Varias revisiones en orden, una a una; para en la primera que falla. */
+  reviewAll: (items: { id: number; body: ReviewBody }[]) => Promise<void>
 }
 
 /** Cola de revisión (los 223 sin clasificar) como estado compartido.
@@ -40,24 +42,47 @@ export function useReviewQueue(): ReviewQueue {
     setResolved((ids) => ids.filter((id) => data?.some((w) => w.id === id)))
   }
 
+  // Un POST con su optimistic; true si se guardó. La caché la vacía quien
+  // llama, una vez por tanda: aplicar veinte sugerencias no debe repintar la
+  // pestaña entera veinte veces.
+  const post = useCallback(async (id: number, body: ReviewBody) => {
+    setResolved((ids) => [...ids, id])
+    try {
+      await fetchJson(`/api/workouts/${id}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      return true
+    } catch (err) {
+      setResolved((ids) => ids.filter((x) => x !== id))
+      setError((err as Error).message)
+      return false
+    }
+  }, [])
+
   const review = useCallback(
     async (id: number, body: ReviewBody) => {
-      setResolved((ids) => [...ids, id])
       setError(null)
-      try {
-        await fetchJson(`/api/workouts/${id}/review`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        clearApiCache()
-      } catch (err) {
-        setResolved((ids) => ids.filter((x) => x !== id))
-        setError((err as Error).message)
-      }
+      if (await post(id, body)) clearApiCache()
     },
-    [],
+    [post],
   )
 
-  return { pending: (data ?? []).filter((w) => !resolved.includes(w.id)), error, review }
+  // Una a una y parando en la primera que falla: el error sale en la cola y lo
+  // que quedaba por aplicar sigue ahí, sin estados a medias que adivinar.
+  const reviewAll = useCallback(
+    async (items: { id: number; body: ReviewBody }[]) => {
+      setError(null)
+      let saved = 0
+      for (const { id, body } of items) {
+        if (!(await post(id, body))) break
+        saved++
+      }
+      if (saved > 0) clearApiCache()
+    },
+    [post],
+  )
+
+  return { pending: (data ?? []).filter((w) => !resolved.includes(w.id)), error, review, reviewAll }
 }

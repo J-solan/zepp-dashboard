@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { areaPath, axisDays, barsPath, gapPath, linePath } from './series'
+import { areaPath, axisDays, bandPath, barsPath, domainOf, gapPath, linePath } from './series'
 
 // Escala de juguete: un punto cada 10 px y el valor medido desde abajo.
 const x = (i: number) => i * 10
@@ -68,5 +68,36 @@ describe('axisDays', () => {
   it('en rangos de uno o dos días no repite el mismo día', () => {
     expect(axisDays(1)).toEqual([0])
     expect(axisDays(2)).toEqual([0, 1])
+  })
+})
+
+describe('domainOf', () => {
+  it('abarca todo lo que se pinta en el carril: la línea, la banda y el umbral', () => {
+    // La línea vive en 100-120, pero la banda baja a 80 y el umbral sube a 200.
+    const [lo, hi] = domainOf([100, 120], [80, 90], [150, null], [200, 210])
+    expect(lo).toBeLessThan(80)
+    expect(hi).toBeGreaterThan(210)
+  })
+
+  it('una sola serie sigue funcionando como antes', () => {
+    expect(domainOf([10, 20])).toEqual([8.8, 21.2])
+  })
+
+  it('sin datos devuelve un dominio válido, no NaN', () => {
+    expect(domainOf([null], [])).toEqual([0, 1])
+  })
+})
+
+describe('bandPath', () => {
+  it('va por el borde de arriba y vuelve por el de abajo', () => {
+    expect(bandPath([10, 20], [30, 40], x, y)).toBe('M0 70L10 60L10 80L0 90Z')
+  })
+
+  it('se parte en los días a los que les falta un borde', () => {
+    expect(bandPath([10, 10, null, 10, 10], [30, 30, 30, 30, 30], x, y).match(/Z/g)).toHaveLength(2)
+  })
+
+  it('sin bordes no hay banda', () => {
+    expect(bandPath([null], [null], x, y)).toBe('')
   })
 })

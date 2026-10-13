@@ -46,6 +46,35 @@ export function bucketOf(value: number, cuts: readonly number[]): number {
   return bucket
 }
 
+export type LoadState = 'bajo' | 'óptimo' | 'alto' | 'sobrecarga'
+
+/** Dónde cae la carga de 7 días frente a los rangos que da Zepp ESE día. Los
+ * rangos son del acumulado y cambian cada pocos días, así que se compara con
+ * los de la propia fila, nunca con unos fijos. Sin acumulado o sin rangos,
+ * null: no se puede afirmar nada. */
+export function loadState(row: DailyMetrics): LoadState | null {
+  const { load_7d: load, load_7d_optimal_min: min, load_7d_optimal_max: max, load_7d_overreaching: over } = row
+  if (load == null || min == null || max == null || over == null) return null
+  if (load >= over) return 'sobrecarga'
+  if (load > max) return 'alto'
+  return load >= min ? 'óptimo' : 'bajo'
+}
+
+/** Estado de cada fila (semana) de la rejilla de un mes: el de su último día
+ * con dato, que es el acumulado que mejor resume esa semana. Las filas sin
+ * dato no salen. */
+export function loadStateByRow(
+  cells: readonly GridCell[],
+  stateByDay: ReadonlyMap<string, LoadState | null>,
+): Map<number, LoadState> {
+  const out = new Map<number, LoadState>()
+  for (const cell of cells) {
+    const state = stateByDay.get(cell.day)
+    if (state) out.set(cell.row, state) // las celdas van en orden: gana la última
+  }
+  return out
+}
+
 /** Mediana por día de la semana, de lunes a domingo. */
 export function weekdayMedians<T extends { day: string }>(
   rows: readonly T[],

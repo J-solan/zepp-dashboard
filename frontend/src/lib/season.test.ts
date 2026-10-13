@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { bucketOf, findings, monthGrid, monthlySummary, quintileCuts, weekdayMedians } from './season'
+import {
+  bucketOf,
+  findings,
+  loadState,
+  loadStateByRow,
+  monthGrid,
+  monthlySummary,
+  quintileCuts,
+  weekdayMedians,
+} from './season'
 import type { DailyMetrics, SleepSession, Workout } from './types'
 
 const daily = (day: string, extra: Partial<DailyMetrics> = {}): DailyMetrics => ({
@@ -14,6 +23,11 @@ const daily = (day: string, extra: Partial<DailyMetrics> = {}): DailyMetrics => 
   vo2max: null,
   train_load: null,
   tz: null,
+  skin_temp_delta: null,
+  load_7d: null,
+  load_7d_optimal_min: null,
+  load_7d_optimal_max: null,
+  load_7d_overreaching: null,
   ...extra,
 })
 
@@ -121,5 +135,47 @@ describe('monthlySummary con noches incompletas', () => {
   it('acepta noches sin score sin romperse', () => {
     const nights = [{ day: '2026-08-01', score: null } as unknown as SleepSession]
     expect(() => monthlySummary([daily('2026-08-01')], nights, [])).not.toThrow()
+  })
+})
+
+describe('loadState', () => {
+  const week = (load_7d: number) =>
+    daily('2026-08-03', { load_7d, load_7d_optimal_min: 100, load_7d_optimal_max: 200, load_7d_overreaching: 300 })
+
+  it('sitúa el acumulado de 7 días frente a los rangos de ese mismo día', () => {
+    expect(loadState(week(99))).toBe('bajo')
+    expect(loadState(week(100))).toBe('óptimo')
+    expect(loadState(week(200))).toBe('óptimo')
+    expect(loadState(week(201))).toBe('alto')
+    expect(loadState(week(300))).toBe('sobrecarga')
+  })
+
+  it('sin acumulado o sin rangos no dice nada', () => {
+    expect(loadState(daily('2026-08-03'))).toBeNull()
+    expect(loadState(daily('2026-08-03', { load_7d: 150 }))).toBeNull()
+  })
+})
+
+describe('loadStateByRow', () => {
+  // Agosto de 2026 empieza en sábado: fila 0 = 1-2, fila 1 = 3-9, fila 2 = 10-16.
+  const august = monthGrid(2026, 8)
+
+  it('cada fila lleva el estado de su último día con dato', () => {
+    const states = new Map([
+      ['2026-08-03', 'alto' as const],
+      ['2026-08-06', 'óptimo' as const],
+      ['2026-08-08', null],
+      ['2026-08-10', 'sobrecarga' as const],
+    ])
+    expect(loadStateByRow(august, states)).toEqual(
+      new Map([
+        [1, 'óptimo'],
+        [2, 'sobrecarga'],
+      ]),
+    )
+  })
+
+  it('una fila sin datos no lleva etiqueta', () => {
+    expect(loadStateByRow(august, new Map()).size).toBe(0)
   })
 })

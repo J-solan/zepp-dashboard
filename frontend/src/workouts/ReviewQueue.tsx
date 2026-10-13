@@ -7,14 +7,34 @@ import { useSports } from '../hooks/useSports'
 import { formatTooltipDay } from '../lib/chartFormat'
 import { dayOfTs } from '../lib/date'
 import { formatClock, formatDuration } from '../lib/format'
-import { CLASSIFY_OPTIONS } from '../lib/workouts'
+import { CLASSIFY_OPTIONS, sportLabel } from '../lib/workouts'
 import type { ReviewBody } from '../hooks/useReviewQueue'
-import type { PendingWorkout } from '../lib/types'
+import type { PendingWorkout, ReviewSuggestion } from '../lib/types'
 
 interface ReviewQueueProps {
   pending: PendingWorkout[]
   error: string | null
   onReview: (id: number, body: ReviewBody) => void
+  onReviewAll: (items: { id: number; body: ReviewBody }[]) => Promise<void>
+}
+
+/** "Regla: Natación → natación" / "Regla: Corta → descartar". */
+function SuggestionText({ suggestion }: { suggestion: ReviewSuggestion }) {
+  return (
+    <span>
+      {suggestion.rule ? (
+        <>
+          Regla: <span className="font-medium text-ink">{suggestion.rule}</span>
+        </>
+      ) : (
+        'Según tus reglas'
+      )}{' '}
+      →{' '}
+      <span className="font-medium text-ink">
+        {suggestion.action === 'classify' ? sportLabel(suggestion.sport) : 'descartar'}
+      </span>
+    </span>
+  )
 }
 
 function metrics(workout: PendingWorkout): string {
@@ -33,12 +53,23 @@ function metrics(workout: PendingWorkout): string {
  * permanente. El estado (fetch + POST + optimistic) es de `useReviewQueue`,
  * que lo comparte con el badge.
  */
-export function ReviewQueue({ pending, error, onReview }: ReviewQueueProps) {
+export function ReviewQueue({ pending, error, onReview, onReviewAll }: ReviewQueueProps) {
   // Tarjeta con el campo de texto libre abierto ("Otro"). Solo una a la vez:
   // clasificar es una acción puntual, no un formulario que se rellena a trozos.
   const { sports } = useSports()
   const [freeTextFor, setFreeTextFor] = useState<number | null>(null)
   const [freeText, setFreeText] = useState('')
+  const [applying, setApplying] = useState(false)
+
+  // Las sugerencias de `[[review_rules]]` se mandan tal cual al endpoint de
+  // revisión: así clasificar como fuerza sigue vinculando con Hevy igual que
+  // a mano. Mientras se aplican, el botón se bloquea para no lanzarlas dos veces.
+  const suggested = pending.filter((w) => w.suggestion != null)
+  const applyAll = async () => {
+    setApplying(true)
+    await onReviewAll(suggested.map((w) => ({ id: w.id, body: w.suggestion! })))
+    setApplying(false)
+  }
 
   const classifyFreeText = (id: number) => {
     const sport = freeText.trim()
@@ -54,6 +85,12 @@ export function ReviewQueue({ pending, error, onReview }: ReviewQueueProps) {
 
   return (
     <div className="flex flex-col gap-3">
+      {suggested.length > 0 && (
+        <Button onClick={applyAll} disabled={applying} className="self-start px-3 py-1.5 text-xs">
+          {applying ? 'Aplicando…' : `Aplicar sugerencias (${suggested.length})`}
+        </Button>
+      )}
+
       {error && (
         <p className="flex items-center gap-2 text-xs text-err">
           <AlertIcon className="h-4 w-4 shrink-0" />
@@ -87,6 +124,19 @@ export function ReviewQueue({ pending, error, onReview }: ReviewQueueProps) {
                 .
               </span>
             </p>
+          )}
+
+          {workout.suggestion && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-hairline p-2.5 text-xs text-ink-secondary">
+              <SuggestionText suggestion={workout.suggestion} />
+              <Button
+                onClick={() => onReview(workout.id, workout.suggestion!)}
+                disabled={applying}
+                className="px-3 py-1.5 text-xs"
+              >
+                Aplicar
+              </Button>
+            </div>
           )}
 
           {freeTextFor === workout.id ? (

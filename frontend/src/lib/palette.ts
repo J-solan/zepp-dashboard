@@ -18,6 +18,7 @@ export const METRIC = {
   // naranja antes del oliva de pasos).
   resp: 'var(--color-zone-normal)',
   vo2max: 'var(--color-hr-hard)',
+  temp: 'var(--color-metric-temp)',
 } as const
 
 export const BIO = {

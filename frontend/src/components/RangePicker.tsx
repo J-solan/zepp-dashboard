@@ -33,7 +33,8 @@ const MIN_DAY = '2000-01-01'
  * le devuelve al campo el valor aplicado a cada tecla, porque eso impedía
  * teclear un año (pasa por 0002, 0020…). Al salir del campo vuelve la fecha
  * aplicada. */
-function DateField({ value, min, max, onCommit }: {
+function DateField({ label, value, min, max, onCommit }: {
+  label: string
   value: string
   min?: string
   max?: string
@@ -45,6 +46,7 @@ function DateField({ value, min, max, onCommit }: {
   return (
     <input
       type="date"
+      aria-label={label}
       value={draft?.base === value ? draft.text : value}
       min={min}
       max={max}
@@ -78,12 +80,17 @@ export function RangePicker({ value, activePreset, onChange }: RangePickerProps)
           <button
             key={p.id}
             className={tabClass(activePreset === p.id)}
+            aria-pressed={activePreset === p.id}
             onClick={() => onChange(presetRange(p.id, value.to), p.id)}
           >
             {p.label}
           </button>
         ))}
-        <button className={tabClass(activePreset === 'custom')} onClick={() => onChange(value, 'custom')}>
+        <button
+          className={tabClass(activePreset === 'custom')}
+          aria-pressed={activePreset === 'custom'}
+          onClick={() => onChange(value, 'custom')}
+        >
           Fechas
         </button>
       </div>
@@ -110,9 +117,16 @@ export function RangePicker({ value, activePreset, onChange }: RangePickerProps)
 
       {activePreset === 'custom' && (
         <span className="flex w-full items-center gap-1.5 text-sm text-ink">
-          <DateField value={value.from} min={MIN_DAY} max={value.to} onCommit={(from) => onChange({ ...value, from }, 'custom')} />
+          <DateField
+            label="Desde"
+            value={value.from}
+            min={MIN_DAY}
+            max={value.to}
+            onCommit={(from) => onChange({ ...value, from }, 'custom')}
+          />
           <span className="text-ink-muted">–</span>
           <DateField
+            label="Hasta"
             value={value.to}
             min={value.from}
             max={todayISO()}

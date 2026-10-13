@@ -4,6 +4,7 @@ import { dayOfTs } from '../lib/date'
 import { METRIC, SPORT } from '../lib/palette'
 import { muscleLabel, zoneBands } from '../lib/workouts'
 import { formatDuration } from '../lib/format'
+import { StrapLink } from './StrapLink'
 import { WorkoutEditor } from './WorkoutEditor'
 import type { Workout, WorkoutExercise, WorkoutMuscle } from '../lib/types'
 
@@ -140,6 +141,7 @@ export function WorkoutDetail({ workout }: { workout: Workout }) {
         />
       )}
 
+      {workout.source === 'hevy' && <StrapLink workout={workout} />}
       <WorkoutEditor workout={workout} />
     </div>
   )

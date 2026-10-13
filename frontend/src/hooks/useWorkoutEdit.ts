@@ -20,6 +20,9 @@ export interface WorkoutEdit {
   restore: () => Promise<boolean>
   /** Solo entrenos manuales; el backend responde 409 en los demás. */
   remove: () => Promise<boolean>
+  /** Solo entrenos de Hevy: los vincula con esa sesión de la pulsera, o los
+   * desvincula con `null`. */
+  link: (strapId: number | null) => Promise<boolean>
 }
 
 /** Edición de un entreno contra `PATCH /api/workouts/{id}`.
@@ -77,5 +80,15 @@ export function useWorkoutEdit(workoutId: number): WorkoutEdit {
     [request, workoutId],
   )
 
-  return { saving, error, save, restore, remove }
+  const link = useCallback(
+    (strapId: number | null) =>
+      request(`/api/workouts/${workoutId}/link`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strap_id: strapId }),
+      }),
+    [request, workoutId],
+  )
+
+  return { saving, error, save, restore, remove, link }
 }

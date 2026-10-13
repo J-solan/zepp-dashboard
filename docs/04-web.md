@@ -94,7 +94,7 @@ src/
     useAnnotations.ts, useAnnotationEditor.ts, useReviewQueue.ts
   components/       Presentational. Props in, JSX out, no fetching.
   dashboard/        Panel tab: DayRail + SeriesBoard + Crosses + intraday details
-  temporada/        Season tab: calendar and weekday pattern
+  temporada/        Season tab: calendar (with each week's 7-day load state) and weekday pattern
   workouts/         Workouts tab: history list, body map, review queue
 ```
 
@@ -150,7 +150,11 @@ one entry in the `lanes` array, and the shared time axis does the rest.
 ```
 
 `kind` is `area`, `line` or `bars`; `cap` clips a spiky series and labels the
-peak with its real value. Every lane prints its own min–max on the left, because
+peak with its real value; `band` (`{lo, hi}`, per day) shades a range behind a
+line and `threshold` (per day) draws a dashed limit — that is how "Carga 7 d"
+shows the 7-day load against Zepp's optimal range and overreaching line;
+`format` changes how the min–max label prints (the skin temperature lane uses a
+sign, because it is a deviation from your baseline). Every lane prints its own min–max on the left, because
 the axes are truncated and that has to be said out loud. A lane with no data at
 all in the range is not drawn: not every device reports everything (VO2max comes
 back empty on many accounts), and an empty row would only push the rest down.
@@ -258,6 +262,17 @@ nobody does two strength sessions in one day.
 reclassified by you in the review queue. If you translate `[sport_types]` into
 your own language, set `strength_sport` to match, or nothing will ever link.
 
+**Linking by hand.** When the automatic match cannot decide (the strap session
+was discarded, or recorded as something else), open the Hevy workout and use
+"Vincular con la pulsera": it lists that day's strap sessions, discarded ones
+included. The one you pick **becomes strength** (classified as
+`strength_sport`), so the next import finds it again on its own; the Hevy
+workout adopts its times, as with the automatic link. "Cambiar sesión" and
+"Desvincular" are there too. Two limits, because the link is kept by making the
+session strength rather than in a column of its own: if that day ends up with
+two strength sessions, a re-import cannot choose and leaves it unlinked; and an
+unlink lasts until the next import if the session is still strength.
+
 ### Teaching it a new sport
 
 A workout whose `type` is not in your `[sport_types]` map is **not dropped**: it
@@ -354,6 +369,16 @@ evidence. You classify it or you ignore it.
 
 Classifying sets `user_sport` on that one workout. It is the per-session escape
 hatch; `[sport_types]` above is the permanent rule.
+
+**Rules suggest, you decide.** `[[review_rules]]` in `ingest/config.toml` (syntax
+and examples at the end of `ingest/config.example.toml`) describe what a pending
+session probably was — by duration, start time, weekday, month, load or sport
+code. The first rule that matches shows up on the item as "Regla: … → …" with an
+**Aplicar** button, and "Aplicar sugerencias (N)" at the top applies them all,
+stopping at the first error. Nothing is applied on its own: a rule is a
+heuristic, and a wrong guess applied silently would sit in your history
+unnoticed. A misspelt key stops the API at startup with the rule and key named,
+rather than turning that rule into "matches everything".
 
 **Discarding is reversible.** "Ver descartados", under the workout list (or
 under "Sin entrenos en este rango" when nothing else is left), brings them

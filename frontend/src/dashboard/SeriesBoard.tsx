@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { areaPath, axisDays, barsPath, gapPath, linePath } from '../lib/series'
+import { areaPath, axisDays, bandPath, barsPath, domainOf, gapPath, linePath } from '../lib/series'
 import { daySeries } from '../lib/days'
 import { dayOfTs, daySpan } from '../lib/date'
 import { formatAxisDay } from '../lib/chartFormat'
@@ -31,20 +31,18 @@ interface LaneSpec {
   unit?: string
   /** Techo de las barras; por encima se recorta y se rotula el pico. */
   cap?: number
-}
-
-/** Dominio con un poco de aire, para que la línea no roce el borde del carril. */
-function domainOf(values: (number | null)[]): [number, number] {
-  const nums = values.filter((v): v is number => v != null)
-  if (nums.length === 0) return [0, 1]
-  const min = Math.min(...nums)
-  const max = Math.max(...nums)
-  if (min === max) return [min - 1, max + 1]
-  const pad = (max - min) * 0.12
-  return [min - pad, max + pad]
+  /** Rango sombreado que cambia por día, detrás de la línea. */
+  band?: { lo: (number | null)[]; hi: (number | null)[] }
+  /** Umbral por día, en discontinua. */
+  threshold?: (number | null)[]
+  /** Cifras del rótulo mín–máx; por defecto, enteras. */
+  format?: (n: number) => string
 }
 
 const fmt = (n: number) => (Math.abs(n) >= 1000 ? formatNumber(n) : `${Math.round(n)}`)
+// Es una desviación sobre tu línea base: el signo es el dato.
+const signed = (n: number) =>
+  n.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: 'exceptZero' })
 
 interface SeriesBoardProps {
   range: DateRange
@@ -80,9 +78,20 @@ export function SeriesBoard({ range, daily, sessions, workouts, styles }: Series
       { label: 'HRV', color: METRIC.bio, kind: 'line', values: pick((r) => r.hrv_ms), unit: 'ms' },
       { label: 'FC reposo', color: METRIC.hr, kind: 'line', values: pick((r) => r.resting_hr), unit: 'bpm' },
       { label: 'Respiración', color: METRIC.resp, kind: 'line', values: pick((r) => r.respiratory_rate), unit: 'rpm' },
+      { label: 'Temp. piel', color: METRIC.temp, kind: 'line', values: pick((r) => r.skin_temp_delta), unit: '°C', format: signed },
       { label: 'VO2max', color: METRIC.vo2max, kind: 'line', values: pick((r) => r.vo2max) },
       { label: 'Pasos', color: METRIC.steps, kind: 'bars', values: pick((r) => r.steps) },
       { label: 'Carga', color: METRIC.load, kind: 'bars', values: pick((r) => r.train_load), cap: 60 },
+      // Los rangos de Zepp son del ACUMULADO de 7 días, no de la carga del
+      // día: por eso van en su propio carril y no sobre las barras de arriba.
+      {
+        label: 'Carga 7 d',
+        color: METRIC.load,
+        kind: 'line',
+        values: pick((r) => r.load_7d),
+        band: { lo: pick((r) => r.load_7d_optimal_min), hi: pick((r) => r.load_7d_optimal_max) },
+        threshold: pick((r) => r.load_7d_overreaching),
+      },
       { label: 'Estrés', color: METRIC.stress, kind: 'line', values: pick((r) => r.stress_avg) },
     ]
     return all.filter((lane) => lane.values.some((v) => v != null))
@@ -121,7 +130,11 @@ export function SeriesBoard({ range, daily, sessions, workouts, styles }: Series
         aria-label="Series diarias del periodo sobre un eje de tiempo común">
         {lanes.map((lane, index) => {
           const top = TOP + index * PITCH
-          const [lo, hi] = lane.kind === 'bars' ? [0, lane.cap ?? maxOf(lane.values)] : domainOf(lane.values)
+          const [lo, hi] =
+            lane.kind === 'bars'
+              ? [0, lane.cap ?? maxOf(lane.values)]
+              : domainOf(lane.values, lane.band?.lo ?? [], lane.band?.hi ?? [], lane.threshold ?? [])
+          const format = lane.format ?? fmt
           const x = (i: number) => xAt(i, days)
           const y = (v: number) => top + LANE_H - ((v - lo) / (hi - lo || 1)) * LANE_H
           const nums = lane.values.filter((v): v is number => v != null)
@@ -132,7 +145,7 @@ export function SeriesBoard({ range, daily, sessions, workouts, styles }: Series
                 {lane.label}
               </text>
               <text x="0" y={top + 26} fontSize="10" fill="var(--color-ink-muted)" fontFamily="var(--font-mono)">
-                {`${fmt(Math.min(...nums))} – ${fmt(Math.max(...nums))}${lane.unit ? ` ${lane.unit}` : ''}`}
+                {`${format(Math.min(...nums))} – ${format(Math.max(...nums))}${lane.unit ? ` ${lane.unit}` : ''}`}
               </text>
 
               {lane.kind === 'area' && (
@@ -140,6 +153,16 @@ export function SeriesBoard({ range, daily, sessions, workouts, styles }: Series
                   <path d={areaPath(lane.values, x, y, top + LANE_H)} fill={lane.color} opacity="0.16" />
                   <path d={linePath(lane.values, x, y)} fill="none" stroke={lane.color} strokeWidth="1.6" strokeLinejoin="round" />
                 </>
+              )}
+              {lane.band && (
+                <path d={bandPath(lane.band.lo, lane.band.hi, x, y)} fill={lane.color} opacity="0.16">
+                  <title>Rango óptimo</title>
+                </path>
+              )}
+              {lane.threshold && (
+                <path d={linePath(lane.threshold, x, y)} fill="none" stroke={lane.color} strokeWidth="1" strokeDasharray="5 3">
+                  <title>Umbral de sobrecarga</title>
+                </path>
               )}
               {lane.kind === 'line' && (
                 <>

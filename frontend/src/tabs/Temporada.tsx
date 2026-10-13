@@ -4,7 +4,7 @@ import { useApi } from '../hooks/useApi'
 import { useSports } from '../hooks/useSports'
 import { Calendar, type CalendarMetric } from '../temporada/Calendar'
 import { WeekdayPattern } from '../temporada/WeekdayPattern'
-import { findings, monthlySummary, weekdayMedians } from '../lib/season'
+import { findings, loadState, monthlySummary, weekdayMedians } from '../lib/season'
 import { mainSessionPerDay } from '../lib/sleep'
 import { dayOfTs } from '../lib/date'
 import { formatClock, formatDuration, formatNumber } from '../lib/format'
@@ -54,6 +54,7 @@ export function Temporada({ range }: TabProps) {
 
   const metric = metrics.find((m) => m.id === metricId)!
   const loadByDay = useMemo(() => new Map(rows.map((r) => [r.day, r.train_load])), [rows])
+  const loadStateByDay = useMemo(() => new Map(rows.map((r) => [r.day, loadState(r)])), [rows])
 
   const medians = useMemo(() => {
     const source = metric.id === 'sleep' ? nights : rows
@@ -106,6 +107,7 @@ export function Temporada({ range }: TabProps) {
               metric={metric}
               workouts={sessions}
               loadByDay={loadByDay}
+              loadStateByDay={loadStateByDay}
               selected={selected}
               onSelect={setSelected}
               styles={styles}
@@ -132,6 +134,11 @@ export function Temporada({ range }: TabProps) {
                   <span className="inline-block h-2 w-2 border border-hairline" />
                   sin registrar
                 </span>
+                {[...loadStateByDay.values()].some((s) => s != null) && (
+                  <span>
+                    <span className="font-mono text-[10px] text-ok">óptimo</span> · carga de 7 d frente a su rango
+                  </span>
+                )}
               </div>
             </div>
 

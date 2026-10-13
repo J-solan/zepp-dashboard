@@ -212,7 +212,12 @@ export function Workouts({ range }: TabProps) {
       </header>
 
       <Sheet open={sheetOpen} onClose={() => setSheetOpen(false)} title="Por revisar">
-        <ReviewQueue pending={queue.pending} error={queue.error} onReview={queue.review} />
+        <ReviewQueue
+          pending={queue.pending}
+          error={queue.error}
+          onReview={queue.review}
+          onReviewAll={queue.reviewAll}
+        />
       </Sheet>
 
       <Sheet open={labelsOpen} onClose={() => setLabelsOpen(false)} title="Etiquetas">

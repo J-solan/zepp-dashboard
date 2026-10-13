@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { bucketOf, monthGrid, quintileCuts } from '../lib/season'
+import { bucketOf, loadStateByRow, monthGrid, quintileCuts } from '../lib/season'
+import type { LoadState } from '../lib/season'
 import { dayOfTs } from '../lib/date'
 import { METRIC, rampStep } from '../lib/palette'
 import { sportColor, sportLabel } from '../lib/workouts'
@@ -11,6 +12,15 @@ const MONTHS = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ]
+
+// Colores de estado: el texto ya dice qué es, el color solo ayuda a barrer
+// las semanas de un vistazo. "bajo" no es un problema, por eso va apagado.
+const LOAD_STATE_COLOR: Record<LoadState, string> = {
+  bajo: 'var(--color-ink-muted)',
+  óptimo: 'var(--color-ok)',
+  alto: 'var(--color-warn)',
+  sobrecarga: 'var(--color-err)',
+}
 
 export interface CalendarMetric {
   id: string
@@ -27,13 +37,16 @@ interface CalendarProps {
   metric: CalendarMetric
   workouts: Workout[]
   loadByDay: Map<string, number | null>
+  /** Estado de la carga de 7 días frente a sus rangos; se rotula por semana. */
+  loadStateByDay: Map<string, LoadState | null>
   selected: string | null
   onSelect: (day: string) => void
   styles?: SportStyles
 }
 
 /** El calendario como objeto principal: color = la métrica elegida, barra baja
- * = carga del día y cuadrito = entreno.
+ * = carga del día, cuadrito = entreno y, al final de cada semana, cómo iba la
+ * carga de 7 días frente a sus rangos.
  *
  * Los días sin dato salen en hueco perfilado en vez de desaparecer: un mes con
  * agujeros tiene que verse como un mes con agujeros. */
@@ -43,6 +56,7 @@ export function Calendar({
   metric,
   workouts,
   loadByDay,
+  loadStateByDay,
   selected,
   onSelect,
   styles,
@@ -81,7 +95,8 @@ export function Calendar({
           <p className="font-serif text-lg leading-none">
             {MONTHS[month - 1]} <span className="text-ink-muted">{year}</span>
           </p>
-          <div className="mt-2 grid grid-cols-7 gap-1 border-t border-hairline pt-2">
+          {/* Octava columna `auto`: sin ninguna etiqueta en el mes se queda a 0. */}
+          <div className="mt-2 grid grid-cols-[repeat(7,minmax(0,1fr))_auto] gap-1 border-t border-hairline pt-2">
             {WEEKDAYS.map((d) => (
               <span key={d} className="text-center font-mono text-[10px] text-ink-muted">
                 {d}
@@ -135,6 +150,16 @@ export function Calendar({
                 </button>
               )
             })}
+            {[...loadStateByRow(monthGrid(year, month), loadStateByDay)].map(([row, state]) => (
+              <span
+                key={`load-${row}`}
+                style={{ gridColumn: 8, gridRow: row + 2, color: LOAD_STATE_COLOR[state] }}
+                className="self-center pl-1 font-mono text-[10px]"
+                title={`Carga de 7 días frente a su rango, último día con dato de la semana: ${state}`}
+              >
+                {state}
+              </span>
+            ))}
           </div>
         </div>
       ))}

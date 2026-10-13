@@ -36,6 +36,14 @@ export interface DailyMetrics {
   vo2max: number | null
   train_load: number | null
   tz: string | null
+  /** Desviación de la temperatura de la piel sobre tu línea base, en °C. */
+  skin_temp_delta: number | null
+  /** Carga acumulada de 7 días y los rangos que da Zepp para ESE acumulado
+   * (no para `train_load`, que es la del día). */
+  load_7d: number | null
+  load_7d_optimal_min: number | null
+  load_7d_optimal_max: number | null
+  load_7d_overreaching: number | null
 }
 
 export interface SyncStatus {
@@ -202,8 +210,16 @@ export interface HevyEvidence {
   duration_s: number | null
 }
 
+/** Lo que propone la primera `[[review_rules]]` del config que encaja. Solo
+ * sugiere: aplicarla es mandarla tal cual a `POST /api/workouts/{id}/review`.
+ * `rule` es el `name` de la regla, `null` si no tiene. */
+export type ReviewSuggestion =
+  | { action: 'classify'; sport: string; rule: string | null }
+  | { action: 'ignore'; rule: string | null }
+
 export interface PendingWorkout extends Workout {
   hevy_evidence: HevyEvidence | null
+  suggestion: ReviewSuggestion | null
 }
 
 export interface SleepStage {

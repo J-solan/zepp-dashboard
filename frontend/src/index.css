@@ -48,6 +48,10 @@
   /* La carga de entreno tenía que pedir prestado un color de otra métrica;
    * ahora tiene el suyo, porque aparece sola en su propio carril. */
   --color-load: light-dark(#b07d24, #bf8a32);
+  /* Temperatura de la piel: frambuesa, el único cálido que quedaba libre. Va
+   * entre respiración (azul) y VO2max (naranja) y se separa de ambos y del
+   * rojo de FC reposo; 5,7:1 y 5,5:1 sobre el papel de cada tema. */
+  --color-metric-temp: light-dark(#a23f6a, #d36b95);
 
   /* series biocharge (total = metric-bio) */
   --color-bio-mental: light-dark(#6f5f92, #8872b7);
@@ -61,16 +65,19 @@
 
   /* zonas de estrés */
   --color-zone-relaxed: light-dark(#6f9e86, #51a981);
-  --color-zone-normal: light-dark(#7d9bb5, #377aae);
+  --color-zone-normal: light-dark(#6896d3, #377aae);
   --color-zone-medium: light-dark(#c4a24a, #cda53a);
   --color-zone-high: light-dark(#b4471f, #bf4a1e);
 
   /* Rampa de zonas de FC. Cuatro de las seis paradas son las mismas que las
    * zonas de estrés — mismo hex, otro concepto — y las dos que faltaban son
    * estas: el gris de "por debajo de la primera zona" y el naranja que
-   * separa el ámbar del rojo. */
+   * separa el ámbar del rojo. En claro, cada pareja vecina de la rampa se
+   * separa al menos 9,6 (ΔE OKLab ×100) también con deuteranopía y
+   * protanopía: el azul "normal" y este naranja estaban en 6–8 y costaban de
+   * distinguir. */
   --color-hr-idle: light-dark(#cfc9bd, #4d473f);
-  --color-hr-hard: light-dark(#c9803f, #c87a30);
+  --color-hr-hard: light-dark(#bd7755, #c87a30);
 
   /* estado (siempre icono + etiqueta) */
   --color-ok: light-dark(#2f7d6d, #4fae96);

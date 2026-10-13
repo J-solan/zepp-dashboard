@@ -70,6 +70,40 @@ export function areaPath(values: Values, x: X, y: Y, baseY: number): string {
   return d
 }
 
+/** Banda entre dos bordes que cambian por día (el rango óptimo de la carga
+ * de 7 días). Va por el borde de arriba y vuelve por el de abajo; se parte en
+ * los días a los que les falta alguno, por el mismo motivo que `areaPath`. */
+export function bandPath(lo: Values, hi: Values, x: X, y: Y): string {
+  let d = ''
+  let run: number[] = []
+  const close = () => {
+    if (run.length === 0) return
+    d += run.map((i, k) => (k ? 'L' : 'M') + r(x(i)) + ' ' + r(y(hi[i] as number))).join('')
+    d += [...run].reverse().map((i) => 'L' + r(x(i)) + ' ' + r(y(lo[i] as number))).join('') + 'Z'
+    run = []
+  }
+  hi.forEach((v, i) => {
+    if (v == null || lo[i] == null) close()
+    else run.push(i)
+  })
+  close()
+  return d
+}
+
+/** Dominio con un poco de aire, para que la línea no roce el borde del carril.
+ *
+ * Recibe TODO lo que se pinta en el carril (línea, banda, umbral): si solo
+ * mirara la línea, la banda o el umbral se saldrían del carril. */
+export function domainOf(...series: Values[]): [number, number] {
+  const nums = series.flat().filter((v): v is number => v != null)
+  if (nums.length === 0) return [0, 1]
+  const min = Math.min(...nums)
+  const max = Math.max(...nums)
+  if (min === max) return [min - 1, max + 1]
+  const pad = (max - min) * 0.12
+  return [min - pad, max + pad]
+}
+
 export interface BarOptions {
   /** Y del suelo del carril. */
   baseY: number
