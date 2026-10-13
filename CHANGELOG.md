@@ -29,6 +29,8 @@ Notable changes per release. The format follows
   easier to tell from their neighbours, also with colour blindness.
 - The range presets tell screen readers which one is active, and the custom
   date fields have labels.
+- Dependencies: React 19.3, Vite 8.3, TypeScript 7, Vitest 5, FastAPI 0.143,
+  uvicorn 0.54 and cryptography 50.
 
 ### Fixed
 
